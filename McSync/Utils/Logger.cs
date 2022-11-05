@@ -1,15 +1,20 @@
 ﻿using System;
 using System.Linq;
 using System.Text;
+using McSync.Server.Info;
 
-namespace MinecraftSynchronizer
+namespace McSync.Utils
 {
-    internal class Logger
+    public class Logger
     {
+        private Logger() { }
+
+        public static Logger Instance { get; } = new Logger();
+        private static readonly object ConsoleColorLock = new object();
 
         internal void Error(Exception exception)
         {
-            lock (Console.Out)
+            lock (ConsoleColorLock)
             {
                 Console.ForegroundColor = ConsoleColor.Red;
                 Console.WriteLine("[ERROR] " + exception.Message);
@@ -27,9 +32,9 @@ namespace MinecraftSynchronizer
             Error(message, new[] { innerContents });
         }
 
-        internal void Error(string message, object[] innerContents)
+        private void Error(string message, object[] innerContents)
         {
-            lock (Console.Out)
+            lock (ConsoleColorLock)
             {
                 Console.ForegroundColor = ConsoleColor.Red;
                 LogPad("[ERROR]", message, innerContents);
@@ -47,9 +52,9 @@ namespace MinecraftSynchronizer
             Local(message, new[] { innerContent });
         }
 
-        internal void Local(string message, object[] innerContents)
+        private void Local(string message, object[] innerContents)
         {
-            lock (Console.Out)
+            lock (ConsoleColorLock)
             {
                 Console.ForegroundColor = ConsoleColor.Yellow;
                 LogPad("[LOCAL]", message, innerContents);
@@ -59,7 +64,7 @@ namespace MinecraftSynchronizer
 
         internal void Drive(string message, object innerContent)
         {
-            lock (Console.Out)
+            lock (ConsoleColorLock)
             {
                 Console.ForegroundColor = ConsoleColor.Green;
                 LogPad("[DRIVE]", message, new[] { innerContent });
@@ -69,7 +74,7 @@ namespace MinecraftSynchronizer
 
         internal void DriveWarn(string message, object innerContent)
         {
-            lock (Console.Out)
+            lock (ConsoleColorLock)
             {
                 Console.ForegroundColor = ConsoleColor.DarkYellow;
                 LogPad("[DRIVE]", message, new[] { innerContent });
@@ -77,12 +82,12 @@ namespace MinecraftSynchronizer
             }
         }
 
-        internal void Server(ServerStatus status)
+        internal void Server(CalculatedStatus calculatedStatus)
         {
-            lock (Console.Out)
+            lock (ConsoleColorLock)
             {
                 Console.ForegroundColor = ConsoleColor.Cyan;
-                LogPad("[SERVER]", "Server status: {}", new[] { status.ToString() });
+                LogPad("[SERVER]", "Server status: {}", new object[] { calculatedStatus.ToString() });
                 Console.ForegroundColor = ConsoleColor.White;
             }
         }
@@ -97,9 +102,9 @@ namespace MinecraftSynchronizer
             Info(message, new[] { innerContent });
         }
 
-        internal void Info(string message, object[] innerContents)
+        private void Info(string message, object[] innerContents)
         {
-            lock (Console.Out)
+            lock (ConsoleColorLock)
             {
                 Console.ForegroundColor = ConsoleColor.Gray;
                 LogPad("[INFO]", message, innerContents);
@@ -109,15 +114,15 @@ namespace MinecraftSynchronizer
 
         private void LogPad(string prefix, string message, object[] innerContents)
         {
-            message = $"{prefix.PadRight(8)} {message}";
-            string[] messageParts = message.Split(new[] { "{}" }, StringSplitOptions.None);
+            message = $"{prefix,-8} {message}";
+            var messageParts = message.Split(new[] { "{}" }, StringSplitOptions.None);
             if (messageParts.Length != innerContents.Length + 1)
             {
-                Error("Log error: {}", new[] { message });
+                Error("Log error: {}", new object[] { message });
                 return;
             }
 
-            StringBuilder result = new StringBuilder();
+            var result = new StringBuilder();
 
             for (int i = 0; i < innerContents.Length; i++)
             {

@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Runtime.Serialization;
 
-namespace MinecraftSynchronizer.Exceptions
+namespace McSync.Exceptions
 {
     [Serializable]
     public class JreNotFoundException : Exception

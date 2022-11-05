@@ -1,10 +1,8 @@
 ﻿using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Google.Apis.Auth.OAuth2;
@@ -13,11 +11,11 @@ using Google.Apis.Drive.v3;
 using Google.Apis.Services;
 using Google.Apis.Upload;
 using Google.Apis.Util.Store;
+using McSync.Exceptions;
+using McSync.Files;
+using McSync.Server;
+using McSync.Server.Info;
 using McSync.Utils;
-using MinecraftSynchronizer;
-using MinecraftSynchronizer.Exceptions;
-using Newtonsoft.Json;
-using Standart.Hash.xxHash;
 
 namespace McSync
 {
@@ -25,21 +23,18 @@ namespace McSync
     {
         private const string HashesFilePath = "hashes.json";
         private const string FlagsFilePath = "flags.json";
-        private const string Owner = "owner";
-        private const string Running = "running";
-        private const string True = "true";
-        private const string False = "false";
-        private const string Updating = "updating";
-        private static readonly Logger Log = new Logger();
-
-        private static readonly string AppPath = Directory.GetCurrentDirectory(); 
+        private static readonly string AppPath = Directory.GetCurrentDirectory();
         private static readonly string ServerDirectoryPath =
             Directory.GetParent(AppPath)?.FullName;
             //@"E:\Desktop\Folders\Jatek\Minecraft_Server\WildUpdateServer";
+
+
+        private static readonly Logger Log = Logger.Instance;
         private static readonly DriveService Drive = CreateDriveService();
         private static readonly HardwareInfoRepository HardwareInfoRepository = new HardwareInfoRepository();
-        private static readonly ParallelOptions ParallelOptions = new ParallelOptions() { MaxDegreeOfParallelism = 24 };
+        private static readonly ServerManager ServerManager = new ServerManager(HardwareInfoRepository);
 
+        private static readonly ParallelOptions ParallelOptions = new ParallelOptions() { MaxDegreeOfParallelism = 24 };
         private static double _downloadedMegabytes;
         private static readonly object DownloadedMegabytesLock = new object();
         private static double _uploadedMegabytes;
@@ -48,78 +43,49 @@ namespace McSync
         private static void Main()
         {
             DownloadAppFile(FlagsFilePath);
-            ServerStatus serverStatus = GetSubsequentServerStatusByFlags();
-            HandleServer(serverStatus);
+            var flagsDownloaded = LocalFileManager.LoadFromFile<Flags>(FlagsFilePath);
+            var calculatedStatus = ServerManager.CalculateStatusByFlags(flagsDownloaded);
+            HandleServer(calculatedStatus);
 
             Log.Info("Done");
         }
-
-
-        private static ServerStatus GetSubsequentServerStatusByFlags()
+        
+        private static void HandleServer(CalculatedStatus calculatedStatus)
         {
-            var flags = LoadDictionaryFromFile(FlagsFilePath);
+            Log.Server(calculatedStatus);
 
-            if (!flags.ContainsKey(Owner) && !flags.ContainsKey(Running))
-                return ServerStatus.UpToDate;
-
-            switch (flags[Running])
+            switch (calculatedStatus)
             {
-                case True when flags[Owner] == HardwareInfoRepository.GetPcId():
-                    return ServerStatus.StoppedCorruptly;
-                case True:
-                    return ServerStatus.AlreadyRunningElsewhere;
-                case False when flags[Owner] == HardwareInfoRepository.GetPcId():
-                    return ServerStatus.UpToDate;
-                case False:
-                    return ServerStatus.Outdated;
-                case Updating when flags[Owner] == HardwareInfoRepository.GetPcId():
-                    return ServerStatus.UploadedCorruptly;
-                case Updating:
-                    return ServerStatus.AlreadyUpdatingElsewhere;
-            }
-
-            Log.Error($"{FlagsFilePath} is corrupted");
-            Log.Info("Exiting...");
-            Environment.Exit(1);
-
-            return ServerStatus.AlreadyRunningElsewhere;
-        }
-        private static void HandleServer(ServerStatus serverStatus)
-        {
-            Log.Server(serverStatus);
-
-            switch (serverStatus)
-            {
-                case ServerStatus.AlreadyRunningElsewhere:
-                case ServerStatus.AlreadyUpdatingElsewhere:
-                case ServerStatus.Running:
+                case CalculatedStatus.AlreadyRunningElsewhere:
+                case CalculatedStatus.AlreadyUpdatingElsewhere:
+                case CalculatedStatus.Running:
                     Log.Info("Exiting...");
                     Environment.Exit(1);
                     return;
-                case ServerStatus.Outdated:
+                case CalculatedStatus.Outdated:
                     UpdateLocalServer();
                     break;
             }
 
-            UpdateLocalFlags(True);
+            UpdateLocalFlags(SavedStatus.RUNNING);
             UploadAndOverwriteFile(FlagsFilePath, true);
             List<Process> serverProcesses = StartServer();
             WaitProcessesToBeClosed(serverProcesses);
 
-            UpdateLocalFlags(Updating);
+            UpdateLocalFlags(SavedStatus.UPDATING);
             UploadAndOverwriteFile(FlagsFilePath, true);
-            UpdateRemoteServer(serverStatus);
+            UpdateRemoteServer(calculatedStatus);
 
-            UpdateLocalFlags(False);
+            UpdateLocalFlags(SavedStatus.STOPPED);
             UploadAndOverwriteFile(FlagsFilePath, true);
         }
-        private static void UpdateRemoteServer(ServerStatus serverStatus)
+        private static void UpdateRemoteServer(CalculatedStatus calculatedStatus)
         {
             DownloadAppFile(HashesFilePath);
-            var remoteHashes = LoadDictionaryFromFile(HashesFilePath);
+            var remoteHashes = LocalFileManager.LoadFromFile<Dictionary<string, string>>(HashesFilePath);
 
-            var calculatedHashes = GetHashOfAllFiles(ServerDirectoryPath);
-            SaveDictionaryIntoFile(HashesFilePath, calculatedHashes);
+            var calculatedHashes = LocalFileManager.CalculateHashOfFilesInDirectory(ServerDirectoryPath);
+            LocalFileManager.SaveObjectIntoFile(HashesFilePath, calculatedHashes);
 
             var filesToDelete = remoteHashes.Except(calculatedHashes).ToDictionary(pair => pair.Key, pair => pair.Value);
             var filesToUpload = calculatedHashes.Except(remoteHashes).ToDictionary(pair => pair.Key, pair => pair.Value);
@@ -131,7 +97,7 @@ namespace McSync
                 .Where(remoteHash => calculatedHashesFiltered[remoteHash.Key] != remoteHash.Value)
                 .ToDictionary(remoteHash => remoteHash.Key, remoteHash => remoteHash.Value);
 
-            Log.Server(ServerStatus.Uploading);
+            Log.Server(CalculatedStatus.Uploading);
 
             Parallel.ForEach(filesToDelete, toDelete =>
             {
@@ -156,7 +122,7 @@ namespace McSync
                     {
                         var ownDriveService = CreateDriveService();
 
-                        if (serverStatus == ServerStatus.UploadedCorruptly &&
+                        if (calculatedStatus == CalculatedStatus.UploadedCorruptly &&
                             IsFilePresentOnDrive(ownDriveService, toUpload.Key))
                         {
                             Log.DriveWarn("Already present: {}", toUpload.Key);
@@ -190,29 +156,24 @@ namespace McSync
             Log.Info("All files synchronized");
             UploadAndOverwriteFile(HashesFilePath, true);
 
-            Log.Server(ServerStatus.Synchronized);
+            Log.Server(CalculatedStatus.Synchronized);
         }
-
-        private static void CreateLocalEmptyJson(string path)
+        
+        private static void UpdateLocalFlags(SavedStatus status)
         {
-            File.WriteAllText(path, "{}");
-            Log.Local("Created: {}", path);
-        }
-        private static void UpdateLocalFlags(string running)
-        {
-            var dictionary = LoadDictionaryFromFile(FlagsFilePath);
+            var flags = LocalFileManager.LoadFromFile<Flags>(FlagsFilePath);
 
-            dictionary[Owner] = HardwareInfoRepository.GetPcId();
-            dictionary[Running] = running;
+            flags.Owner = HardwareInfoRepository.GetPcId();
+            flags.SavedStatus = status;
 
-            SaveDictionaryIntoFile(FlagsFilePath, dictionary);
-            Log.Info($"Flag 'running' updated to '{running}'");
+            LocalFileManager.SaveObjectIntoFile(FlagsFilePath, flags);
+            Log.Info($"Flag 'running' updated to '{status}'");
         }
         private static void UpdateLocalServer()
         {
             DownloadAppFile(HashesFilePath);
-            var remoteHashes = LoadDictionaryFromFile(HashesFilePath);
-            var calculatedHashes = GetHashOfAllFiles(ServerDirectoryPath);
+            var remoteHashes = LocalFileManager.LoadFromFile<Dictionary<string, string>>(HashesFilePath);
+            var calculatedHashes = LocalFileManager.CalculateHashOfFilesInDirectory(ServerDirectoryPath);
 
             var filesToDelete = calculatedHashes.Except(remoteHashes).ToDictionary(pair => pair.Key, pair => pair.Value);
             var filesToDownload = remoteHashes.Except(calculatedHashes).ToDictionary(pair => pair.Key, pair => pair.Value);
@@ -224,7 +185,7 @@ namespace McSync
                 .Where(remoteHash => calculatedHashesFiltered[remoteHash.Key] != remoteHash.Value)
                 .ToDictionary(remoteHash => remoteHash.Key, remoteHash => remoteHash.Value);
 
-            Log.Server(ServerStatus.Updating);
+            Log.Server(CalculatedStatus.Updating);
 
             Parallel.ForEach(filesToDelete, toDelete =>
             {
@@ -263,7 +224,7 @@ namespace McSync
             });
 
             Log.Info("All files synchronized");
-            Log.Server(ServerStatus.Synchronized);
+            Log.Server(CalculatedStatus.Synchronized);
         }
 
 
@@ -358,7 +319,7 @@ namespace McSync
 
             if (flagsDownloadStatus == DownloadStatus.Failed)
             {
-                CreateLocalEmptyJson(appFilePath);
+                LocalFileManager.SaveObjectIntoFile(appFilePath, new object());
                 Log.Info($"{appFilePath.Split('.')[0]} not found on Drive, created new locally");
             }
             else Log.Info($"{appFilePath.Split('.')[0]} downloaded from Drive");
@@ -369,7 +330,7 @@ namespace McSync
             if (string.IsNullOrEmpty(path))
                 return;
 
-            string relativePath = GetRelativeFilePathToServerDirectory(path);
+            string relativePath = LocalFileManager.GetRelativeFilePath(path, ServerDirectoryPath);
             Log.Info("Uploading: {}", relativePath);
 
             const string mimeType = "application/octet-stream";
@@ -412,7 +373,7 @@ namespace McSync
 
             bool haveCreated = false;
             string lastParent = string.Empty;
-            string[] folders = GetRelativeFilePathToServerDirectory(path).Split('\\');
+            string[] folders = LocalFileManager.GetRelativeFilePath(path, ServerDirectoryPath).Split('\\');
             foreach (string folder in folders)
             {
                 string folderId = ExecuteGetIdOfPathRequest(driveService, folder, lastParent);
@@ -473,7 +434,7 @@ namespace McSync
             }
 
             driveService.Files.Delete(fileId).Execute();
-            Log.Drive("Deleted: {}", GetRelativeFilePathToServerDirectory(path));
+            Log.Drive("Deleted: {}", LocalFileManager.GetRelativeFilePath(path, ServerDirectoryPath));
         }
 
         private static bool IsFilePresentOnDrive(DriveService driveService, string path)
@@ -611,13 +572,13 @@ namespace McSync
                 process.WaitForExit();
             }
 
-            Log.Server(ServerStatus.Stopped);
+            Log.Server(CalculatedStatus.Stopped);
         }
 
         private static List<Process> StartServer()
         {
             var processes = new List<Process>();
-            Log.Server(ServerStatus.Starting);
+            Log.Server(CalculatedStatus.Starting);
 
             const string createTokenCommand = "ngrok authtoken 22NyU96RrxqrNvxb5Y7eJw08ZKl_5ZVerYF6Ei5XJN5b9E2TX";
             Process tokenCreater = RunCmdCommand(createTokenCommand);
@@ -658,58 +619,10 @@ namespace McSync
             string openNgrokCommand = "ngrok.exe tcp 25565 --region=eu";
             processes.Add(RunCmdCommand(openNgrokCommand));
 
-            Log.Server(ServerStatus.Running);
+            Log.Server(CalculatedStatus.Running);
 
             return processes;
         }
-
-
-        private static string GetHashOfFile(FileStream file)
-        {
-            file.Position = 0;
-
-            return xxHash64.ComputeHash(file).ToString();
-        }
-        private static IDictionary<string, string> GetHashOfAllFiles(string directoryPath)
-        {
-            Log.Info("Calculating hashes");
-
-            var directoryInfo = new DirectoryInfo(directoryPath);
-            var fileInfos = directoryInfo.EnumerateFiles("*", SearchOption.AllDirectories)
-                .Where(file => IsFileNotFiltered(file.FullName))
-                .ToList();
-            var hashes = new ConcurrentDictionary<string, string>();
-
-            Parallel.ForEach(fileInfos, fileInfo =>
-            {
-                string hash;
-                using (FileStream file = fileInfo.OpenRead())
-                    hash = GetHashOfFile(file);
-
-                Log.Info($"Hash of {fileInfo.Name} calculated");
-
-                hashes.TryAdd(GetRelativeFilePathToServerDirectory(fileInfo.FullName), hash);
-            });
-
-            Log.Info("Hashes calculated");
-            return hashes;
-        }
-        private static void SaveDictionaryIntoFile(string filePath, IDictionary<string, string> dictionary)
-        {
-            string json = JsonConvert.SerializeObject(dictionary);
-
-            File.WriteAllText(filePath, json);
-            Log.Local("Saved: {}", filePath);
-        }
-        private static IDictionary<string, string> LoadDictionaryFromFile(string filePath)
-        {
-            if (!File.Exists(filePath))
-                return new Dictionary<string, string>();
-
-            string json = File.ReadAllText(filePath, Encoding.UTF8);
-            return JsonConvert.DeserializeObject<Dictionary<string, string>>(json);
-        }
-
 
         private static bool IsFileNotFiltered(string fullname)
         {
@@ -720,15 +633,6 @@ namespace McSync
                 !fullname.Contains("net5.0") &&
                 !fullname.Contains("ngrok.cmd") &&
                 !fullname.Contains("run.cmd");
-        }
-
-        private static string GetRelativeFilePathToServerDirectory(string fullPath)
-        {
-            if (string.IsNullOrEmpty(fullPath))
-                return fullPath;
-
-            var path = fullPath.Split(new[] { $@"{ServerDirectoryPath}\" }, StringSplitOptions.None);
-            return path.Length == 1 ? path[0] : path[1];
         }
     }
 }
