@@ -17,7 +17,7 @@ namespace McSync.Exceptions
         public JreNotFoundException(string message, Exception innerException) : base(message, innerException)
         {
         }
-        
+
         protected JreNotFoundException(SerializationInfo info, StreamingContext context) : base(info, context)
         {
         }

@@ -1,7 +1,4 @@
-﻿using System;
-using McSync.Utils;
-
-namespace McSync.Server.Info
+﻿namespace McSync.Server.Info
 {
     public enum CalculatedStatus
     {

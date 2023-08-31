@@ -1,8 +1,8 @@
 ﻿namespace McSync.Server.Info
 {
-    public class Flags
+    public abstract class Flags
     {
-        public SavedStatus? SavedStatus { get; set; }
+        public PersistedStatus? LifecycleStatus { get; set; }
         public string Owner { get; set; }
     }
 }
