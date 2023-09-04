@@ -6,11 +6,11 @@ using McSync.Utils;
 
 namespace McSync.Processes
 {
-    public class ProcessController
+    public class ProcessRunner
     {
         private readonly Log _log;
 
-        public ProcessController(Log log)
+        public ProcessRunner(Log log)
         {
             _log = log;
         }

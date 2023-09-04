@@ -19,20 +19,20 @@ namespace McSync.Files.Remote
     {
         private readonly object _downloadedMegabytesLock = new object();
         private readonly DriveServicePool _driveServicePool;
+        private readonly DriveServiceRetrier _driveServiceRetrier;
         private readonly HashCalculatorFactory _hashCalculatorFactory;
         private readonly LocalFileManager _localFileManager;
         private readonly Log _log;
-        private readonly Retrier _retrier;
         private readonly object _uploadedMegabytesLock = new object();
 
         public RemoteFileManager(DriveServicePool driveServicePool, LocalFileManager localFileManager,
-            HashCalculatorFactory hashCalculatorFactory, Log log, Retrier retrier)
+            HashCalculatorFactory hashCalculatorFactory, Log log, DriveServiceRetrier driveServiceRetrier)
         {
             _driveServicePool = driveServicePool;
             _localFileManager = localFileManager;
             _hashCalculatorFactory = hashCalculatorFactory;
             _log = log;
-            _retrier = retrier;
+            _driveServiceRetrier = driveServiceRetrier;
         }
 
         public double DownloadedMegabytes { get; private set; }
@@ -95,7 +95,7 @@ namespace McSync.Files.Remote
 
         public void DeleteRemoteFile(string path)
         {
-            _retrier.RetryUntilThrowsNoException(
+            _driveServiceRetrier.RetryUntilThrowsNoException(
                 () => _driveServicePool.ExecuteWithDriveService(driveService => DeleteRemoteFile(driveService, path)),
                 e => _log.Error("Retrying to delete: {}", path));
         }
@@ -133,7 +133,7 @@ namespace McSync.Files.Remote
 
         public void UpdateRemoteFile(string path)
         {
-            _retrier.RetryUntilThrowsNoException(
+            _driveServiceRetrier.RetryUntilThrowsNoException(
                 () => _driveServicePool.ExecuteWithDriveService(driveService =>
                     UploadAndOverwriteFile(driveService, path, false)),
                 e => _log.Error("Retrying to update: {}", path));
@@ -149,7 +149,7 @@ namespace McSync.Files.Remote
 
         public void UploadFile(CalculatedStatus calculatedStatus, string path)
         {
-            _retrier.RetryUntilThrowsNoException(
+            _driveServiceRetrier.RetryUntilThrowsNoException(
                 () => _driveServicePool.ExecuteWithDriveService(driveService =>
                 {
                     if (calculatedStatus == CalculatedStatus.UploadedCorruptly &&

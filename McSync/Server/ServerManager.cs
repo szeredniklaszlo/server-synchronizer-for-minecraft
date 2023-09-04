@@ -1,10 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using McSync.Exceptions;
 using McSync.Files;
 using McSync.Files.Local;
 using McSync.Files.Local.HashCalculator;
@@ -17,22 +15,22 @@ namespace McSync.Server
 {
     public class ServerManager
     {
+        private readonly DriveServiceRetrier _driveServiceRetrier;
         private readonly FileSynchronizer _fileSynchronizer;
+        private readonly FlagSynchronizer _flagSynchronizer;
         private readonly HardwareInfoRetriever _hardwareInfoRetriever;
         private readonly HashCalculatorFactory _hashCalculatorFactory;
         private readonly LocalFileManager _localFileManager;
         private readonly Log _log;
-        private readonly ProcessController _processController;
         private readonly RemoteFileManager _remoteFileManager;
-        private readonly Retrier _retrier;
+        private readonly ServerProcessRunner _serverProcessRunner;
         private CalculatedStatus _calculatedStatus;
-
-        private Flags _flags;
 
         public ServerManager(HardwareInfoRetriever hardwareInfoRetriever,
             LocalFileManager localFileManager, HashCalculatorFactory hashCalculatorFactory,
             RemoteFileManager remoteFileManager, FileSynchronizer fileSynchronizer, Log log,
-            ProcessController processController, Retrier retrier)
+            DriveServiceRetrier driveServiceRetrier, ServerProcessRunner serverProcessRunner,
+            FlagSynchronizer flagSynchronizer)
         {
             _hardwareInfoRetriever = hardwareInfoRetriever;
             _localFileManager = localFileManager;
@@ -40,29 +38,27 @@ namespace McSync.Server
             _remoteFileManager = remoteFileManager;
             _fileSynchronizer = fileSynchronizer;
             _log = log;
-            _processController = processController;
-            _retrier = retrier;
+            _driveServiceRetrier = driveServiceRetrier;
+            _serverProcessRunner = serverProcessRunner;
+            _flagSynchronizer = flagSynchronizer;
         }
 
         public void Run()
         {
-            DownloadFlags();
+            _flagSynchronizer.DownloadFlags();
             CalculateStatus();
             ManageServerLifecycle();
-        }
-
-        private bool AreFlagsCorrupted()
-        {
-            return string.IsNullOrEmpty(_flags.Owner) || _flags.LifecycleStatus == null;
         }
 
         private void CalculateStatus()
         {
             if (IsVeryFirstServerStart())
                 _calculatedStatus = CalculatedStatus.UpToDate;
-            else if (AreFlagsCorrupted())
-                throw new ArgumentException("Flags are corrupted");
-            else ConvertMapSavedStatusToCalculatedStatus();
+            else
+            {
+                _flagSynchronizer.ValidateFlags();
+                MapSavedStatusToCalculatedStatus();
+            }
         }
 
         private static Dictionary<string, string> CalculateWhatToDelete(
@@ -81,40 +77,6 @@ namespace McSync.Server
                 .ToDictionary(pair => pair.Key, pair => pair.Value);
         }
 
-        private void CheckIfPortableJavaIsPresent()
-        {
-            DirectoryInfo portableJavaHome = GetPortableJavaHome();
-            if (!IsJavaPresentInJavaHome(portableJavaHome)) throw new JreNotFoundException();
-        }
-
-        private void ConvertMapSavedStatusToCalculatedStatus()
-        {
-            string currentPcId = _hardwareInfoRetriever.GetPcId();
-            switch (_flags.LifecycleStatus)
-            {
-                case PersistedStatus.Running when _flags.Owner == currentPcId:
-                    _calculatedStatus = CalculatedStatus.StoppedCorruptly;
-                    break;
-                case PersistedStatus.Running:
-                    _calculatedStatus = CalculatedStatus.AlreadyRunningElsewhere;
-                    break;
-                case PersistedStatus.Stopped when _flags.Owner == currentPcId:
-                    _calculatedStatus = CalculatedStatus.UpToDate;
-                    break;
-                case PersistedStatus.Stopped:
-                    _calculatedStatus = CalculatedStatus.Outdated;
-                    break;
-                case PersistedStatus.Updating when _flags.Owner == currentPcId:
-                    _calculatedStatus = CalculatedStatus.UploadedCorruptly;
-                    break;
-                case PersistedStatus.Updating:
-                    _calculatedStatus = CalculatedStatus.AlreadyUpdatingElsewhere;
-                    break;
-            }
-
-            throw new ArgumentException("Flags are corrupted");
-        }
-
         private void DeleteIfExisting(string localPath)
         {
             try
@@ -126,11 +88,6 @@ namespace McSync.Server
             {
                 _log.Local("Already deleted: {}", localPath);
             }
-        }
-
-        private void DownloadFlags()
-        {
-            _flags = _fileSynchronizer.DownloadJsonFile<Flags>(Paths.Flags);
         }
 
         private IDictionary<string, string> DownloadRemoteHashes()
@@ -145,31 +102,9 @@ namespace McSync.Server
 
         private void DownloadWithUnlimitedRetry(string remotePath)
         {
-            _retrier.RetryUntilThrowsNoException(
+            _driveServiceRetrier.RetryUntilThrowsNoException(
                 () => DownloadServerFile(remotePath),
                 exception => { _log.DriveWarn("Retrying to download: {}", remotePath); });
-        }
-
-        private void ExecuteTokenCreation()
-        {
-            const string createTokenCommand = "ngrok authtoken 22NyU96RrxqrNvxb5Y7eJw08ZKl_5ZVerYF6Ei5XJN5b9E2TX";
-            Process tokenCreator = _processController.RunCmdCommand(createTokenCommand);
-            tokenCreator.WaitForExit();
-        }
-
-        private DirectoryInfo GetPortableJavaHome()
-        {
-            try
-            {
-                return new DirectoryInfo(Paths.Java17Home);
-            }
-            catch (DirectoryNotFoundException)
-            {
-                _log.Error($@"Java 17 home folder is not found: {Paths.Java17Home}");
-                Environment.Exit(1);
-            }
-
-            return null;
         }
 
         private void HandleCalculatedStatus()
@@ -189,88 +124,44 @@ namespace McSync.Server
             }
         }
 
-        private bool IsJavaPresentInJavaHome(DirectoryInfo javaHome)
-        {
-            return javaHome.GetFiles().Any(file => file.Name == "java.exe");
-        }
-
         private bool IsVeryFirstServerStart()
         {
-            return _flags.Owner == null && _flags.LifecycleStatus == null;
+            return _flagSynchronizer.Flags.Owner == null && _flagSynchronizer.Flags.LifecycleStatus == null;
         }
 
         private void ManageServerLifecycle()
         {
             HandleCalculatedStatus();
-            RunUntilClosed();
-            UpdateRemote();
+            _serverProcessRunner.RunUntilClosed();
+            UpdateRemoteServerAndFlags();
         }
 
-        private void RunUntilClosed()
+        private void MapSavedStatusToCalculatedStatus()
         {
-            List<Process> serverProcesses = StartAllProcesses();
-            _processController.WaitProcessesToBeClosed(serverProcesses);
-        }
-
-        private List<Process> StartAllProcesses()
-        {
-            _log.Server(CalculatedStatus.Starting);
-
-            ExecuteTokenCreation();
-            List<Process> processes = StartServerProcesses();
-
-            _log.Server(CalculatedStatus.Running);
-            UpdateFlags(PersistedStatus.Running);
-            return processes;
-        }
-
-        private Process StartServerJar()
-        {
-            CheckIfPortableJavaIsPresent();
-            string serverJar = new DirectoryInfo(Paths.ServerPath)
-                .GetFiles()
-                .FirstOrDefault(file => file.Extension == ".jar")?.Name;
-
-            string arguments = $@"-Xms4G -Xmx4G -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 
--XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+AlwaysPreTouch -XX:G1HeapWastePercent=5 
--XX:G1MixedGCCountTarget=4 -XX:G1MixedGCLiveThresholdPercent=90 -XX:G1RSetUpdatingPauseTimePercent=5 
--XX:SurvivorRatio=32 -XX:+PerfDisableSharedMem -XX:MaxTenuringThreshold=1 -XX:G1NewSizePercent=30 
--XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M -XX:G1ReservePercent=20 -XX:InitiatingHeapOccupancyPercent=15 
--Dusing.aikars.flags=https://mcflags.emc.gs -Daikars.new.flags=true -jar {serverJar} nogui";
-            string java17Path = $@"{Paths.Java17Home}\java";
-            return _processController.RunCmdCommand($"{java17Path} {arguments}");
-        }
-
-        private List<Process> StartServerProcesses()
-        {
-            return new List<Process>
+            string currentPcId = _hardwareInfoRetriever.GetPcId();
+            switch (_flagSynchronizer.Flags.LifecycleStatus)
             {
-                StartServerJar(),
-                StartTcpTunnelProvider()
-            };
-        }
+                case PersistedStatus.Running when _flagSynchronizer.Flags.Owner == currentPcId:
+                    _calculatedStatus = CalculatedStatus.StoppedCorruptly;
+                    break;
+                case PersistedStatus.Running:
+                    _calculatedStatus = CalculatedStatus.AlreadyRunningElsewhere;
+                    break;
+                case PersistedStatus.Stopped when _flagSynchronizer.Flags.Owner == currentPcId:
+                    _calculatedStatus = CalculatedStatus.UpToDate;
+                    break;
+                case PersistedStatus.Stopped:
+                    _calculatedStatus = CalculatedStatus.Outdated;
+                    break;
+                case PersistedStatus.Updating when _flagSynchronizer.Flags.Owner == currentPcId:
+                    _calculatedStatus = CalculatedStatus.UploadedCorruptly;
+                    break;
+                case PersistedStatus.Updating:
+                    _calculatedStatus = CalculatedStatus.AlreadyUpdatingElsewhere;
+                    break;
+            }
 
-        private Process StartTcpTunnelProvider()
-        {
-            string openNgrokCommand = "ngrok.exe tcp 25565 --region=eu";
-            return _processController.RunCmdCommand(openNgrokCommand);
-        }
-
-        private void UpdateFlags(PersistedStatus status)
-        {
-            UpdateLocalFlags(status);
-            _remoteFileManager.UploadAndOverwriteFile(Paths.Flags, true);
-        }
-
-        private void UpdateLocalFlags(PersistedStatus status)
-        {
-            var flags = _localFileManager.LoadObjectFromJsonFile<Flags>(Paths.Flags);
-
-            flags.Owner = _hardwareInfoRetriever.GetPcId();
-            flags.LifecycleStatus = status;
-
-            _localFileManager.SaveObjectAsJsonFile(Paths.Flags, flags);
-            _log.Info($"Flag 'running' updated to '{status}'");
+            throw new ArgumentException("Flags are corrupted");
         }
 
         private void UpdateLocalServer()
@@ -303,14 +194,7 @@ namespace McSync.Server
             _log.Server(CalculatedStatus.Synchronized);
         }
 
-        private void UpdateRemote()
-        {
-            UpdateFlags(PersistedStatus.Updating);
-            UpdateRemoteServer(_calculatedStatus);
-            UpdateFlags(PersistedStatus.Stopped);
-        }
-
-        private void UpdateRemoteServer(CalculatedStatus calculatedStatus)
+        private void UpdateRemoteServer()
         {
             IDictionary<string, string> remoteHashes = DownloadRemoteHashes();
             IDictionary<string, string> updatedLocalHashes = _remoteFileManager.UpdateHashes();
@@ -329,7 +213,7 @@ namespace McSync.Server
 
             _remoteFileManager.CreateRemoteFolderTreeFromLocalFolderRecursively(Paths.ServerPath);
             Parallel.ForEach(filesToUpload, Program.ParallelOptions,
-                toUpload => _remoteFileManager.UploadFile(calculatedStatus, toUpload.Key));
+                toUpload => _remoteFileManager.UploadFile(_calculatedStatus, toUpload.Key));
 
             Parallel.ForEach(filesToUpdate, Program.ParallelOptions,
                 toUpdate => _remoteFileManager.UpdateRemoteFile(toUpdate.Key));
@@ -337,6 +221,13 @@ namespace McSync.Server
 
             _remoteFileManager.UploadAndOverwriteFile(Paths.Hashes, true);
             _log.Server(CalculatedStatus.Synchronized);
+        }
+
+        private void UpdateRemoteServerAndFlags()
+        {
+            _flagSynchronizer.UpdateRemoteFlags(PersistedStatus.Updating);
+            UpdateRemoteServer();
+            _flagSynchronizer.UpdateRemoteFlags(PersistedStatus.Stopped);
         }
     }
 }

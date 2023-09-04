@@ -95,6 +95,7 @@
         <Compile Include="Exceptions\DownloadFailedException.cs"/>
         <Compile Include="Exceptions\JreNotFoundException.cs"/>
         <Compile Include="Files\FileSynchronizer.cs"/>
+        <Compile Include="Files\FlagSynchronizer.cs"/>
         <Compile Include="Files\Local\HashCalculator\HashCalculator.cs"/>
         <Compile Include="Files\Local\HashCalculator\HashCalculatorConfig.cs"/>
         <Compile Include="Files\Local\HashCalculator\HashCalculatorFactory.cs"/>
@@ -103,7 +104,8 @@
         <Compile Include="Files\Remote\DriveServiceFactory.cs"/>
         <Compile Include="Files\Remote\DriveServicePool.cs"/>
         <Compile Include="Files\Remote\RemoteFileManager.cs"/>
-        <Compile Include="Processes\ProcessController.cs"/>
+        <Compile Include="Processes\ProcessRunner.cs"/>
+        <Compile Include="Processes\ServerProcessRunner.cs"/>
         <Compile Include="Program.cs"/>
         <Compile Include="Properties\AssemblyInfo.cs"/>
         <Compile Include="Server\Info\CalculatedStatus.cs"/>
@@ -112,7 +114,7 @@
         <Compile Include="Server\ServerManager.cs"/>
         <Compile Include="Utils\HardwareInfoRetriever.cs"/>
         <Compile Include="Utils\Log.cs"/>
-        <Compile Include="Utils\Retrier.cs"/>
+        <Compile Include="Utils\DriveServiceRetrier.cs"/>
     </ItemGroup>
     <ItemGroup>
         <None Include="App.config"/>

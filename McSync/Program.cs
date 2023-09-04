@@ -40,7 +40,7 @@ namespace McSync
             }).SingleInstance();
             builder.RegisterType<DriveServicePool>().SingleInstance();
 
-            builder.RegisterType<Retrier>().SingleInstance();
+            builder.RegisterType<DriveServiceRetrier>().SingleInstance();
 
             builder.RegisterType<LocalFileManager>().SingleInstance();
             builder.RegisterType<HashCalculatorFactory>();
@@ -50,7 +50,9 @@ namespace McSync
             builder.RegisterType<ManagementObjectSearcher>();
             builder.RegisterType<HardwareInfoRetriever>();
 
-            builder.RegisterType<ProcessController>().SingleInstance();
+            builder.RegisterType<ProcessRunner>().SingleInstance();
+            builder.RegisterType<ServerProcessRunner>().SingleInstance();
+            builder.RegisterType<FlagSynchronizer>().SingleInstance();
             builder.RegisterType<ServerManager>().SingleInstance();
 
             _container = builder.Build();
