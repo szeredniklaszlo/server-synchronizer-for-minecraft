@@ -8,7 +8,6 @@ using Google.Apis.Drive.v3;
 using Google.Apis.Upload;
 using McSync.Exceptions;
 using McSync.Files.Local;
-using McSync.Files.Local.HashCalculator;
 using McSync.Server.Info;
 using McSync.Utils;
 using File = Google.Apis.Drive.v3.Data.File;
@@ -18,51 +17,26 @@ namespace McSync.Files.Remote
     public class RemoteFileManager
     {
         private readonly object _downloadedMegabytesLock = new object();
-        private readonly DriveServicePool _driveServicePool;
-        private readonly DriveServiceRetrier _driveServiceRetrier;
-        private readonly HashCalculatorFactory _hashCalculatorFactory;
-        private readonly LocalFileManager _localFileManager;
+        private readonly GDriveServicePool _gDriveServicePool;
+        private readonly GDriveServiceRetrier _gDriveServiceRetrier;
         private readonly Log _log;
+        private readonly PathUtils _pathUtils;
         private readonly object _uploadedMegabytesLock = new object();
 
-        public RemoteFileManager(DriveServicePool driveServicePool, LocalFileManager localFileManager,
-            HashCalculatorFactory hashCalculatorFactory, Log log, DriveServiceRetrier driveServiceRetrier)
+        public RemoteFileManager(GDriveServicePool gDriveServicePool,
+            Log log,
+            GDriveServiceRetrier gDriveServiceRetrier,
+            PathUtils pathUtils)
         {
-            _driveServicePool = driveServicePool;
-            _localFileManager = localFileManager;
-            _hashCalculatorFactory = hashCalculatorFactory;
+            _gDriveServicePool = gDriveServicePool;
             _log = log;
-            _driveServiceRetrier = driveServiceRetrier;
+            _gDriveServiceRetrier = gDriveServiceRetrier;
+            _pathUtils = pathUtils;
         }
 
         public double DownloadedMegabytes { get; private set; }
 
         public double UploadedMegabytes { get; private set; }
-
-        public IDictionary<string, string> CalculateFilesToDelete(IDictionary<string, string> remoteHashes,
-            IDictionary<string, string> localHashes)
-        {
-            return ToDictionary(remoteHashes.Except(localHashes));
-        }
-
-        public Dictionary<string, string> CalculateFilesToUpdate(IDictionary<string, string> remoteHashes,
-            IDictionary<string, string> localHashes,
-            IDictionary<string, string> filesToDelete,
-            IDictionary<string, string> filesToUpload)
-        {
-            IDictionary<string, string> remoteHashesFiltered = ToDictionary(remoteHashes.Except(filesToDelete));
-            IDictionary<string, string> calculatedHashesFiltered = ToDictionary(localHashes.Except(filesToUpload));
-
-            return remoteHashesFiltered
-                .Where(remoteHash => calculatedHashesFiltered[remoteHash.Key] != remoteHash.Value)
-                .ToDictionary(remoteHash => remoteHash.Key, remoteHash => remoteHash.Value);
-        }
-
-        public IDictionary<string, string> CalculateFilesToUpload(IDictionary<string, string> remoteHashes,
-            IDictionary<string, string> localHashes)
-        {
-            return ToDictionary(localHashes.Except(remoteHashes));
-        }
 
         public void CreateRemoteFolderTreeFromLocalFolderRecursively(string rootPath)
         {
@@ -72,22 +46,10 @@ namespace McSync.Files.Remote
                 .ToList();
 
             Parallel.ForEach(childDirectories, Program.ParallelOptions, childDirectory =>
-            {
-                bool isRemoteFolderCreated = false;
-                while (!isRemoteFolderCreated)
-                    try
-                    {
-                        _driveServicePool.ExecuteWithDriveService(driveService =>
-                        {
-                            CreateRemoteFolder(driveService, childDirectory.FullName);
-                            isRemoteFolderCreated = true;
-                        });
-                    }
-                    catch (Exception)
-                    {
-                        _log.Error("Retrying to create: {}", childDirectory);
-                    }
-            });
+                _gDriveServiceRetrier.RetryUntilThrowsNoException(
+                    () => _gDriveServicePool.ExecuteWithDriveService(driveService =>
+                        CreateRemoteFolder(driveService, childDirectory.FullName)),
+                    e => _log.Error("Retrying to create: {}", childDirectory)));
 
             foreach (DirectoryInfo childDirectory in childDirectories)
                 CreateRemoteFolderTreeFromLocalFolderRecursively(childDirectory.FullName);
@@ -95,85 +57,45 @@ namespace McSync.Files.Remote
 
         public void DeleteRemoteFile(string path)
         {
-            _driveServiceRetrier.RetryUntilThrowsNoException(
-                () => _driveServicePool.ExecuteWithDriveService(driveService => DeleteRemoteFile(driveService, path)),
+            _gDriveServiceRetrier.RetryUntilThrowsNoException(
+                () => _gDriveServicePool.ExecuteWithDriveService(driveService => DeleteRemoteFile(driveService, path)),
                 e => _log.Error("Retrying to delete: {}", path));
-        }
-
-        public void DownloadOrCreateAppJsonFile(string appJsonFilePath)
-        {
-            DownloadStatus flagsDownloadStatus = DownloadServerOrAppFile(appJsonFilePath);
-
-            if (flagsDownloadStatus == DownloadStatus.Failed)
-            {
-                _localFileManager.SaveObjectAsJsonFile(appJsonFilePath, new object());
-                _log.Info($"{appJsonFilePath.Split('.')[0]} not found on Drive, created new locally");
-            }
-            else
-            {
-                _log.Info($"{appJsonFilePath.Split('.')[0]} downloaded from Drive");
-            }
         }
 
         public DownloadStatus DownloadServerOrAppFile(string path)
         {
             string choppedPath = path.Split(new[] {Paths.ServerPath + @"\"}, StringSplitOptions.None).Last();
-
-            return _driveServicePool.ExecuteWithDriveService(
-                driveService => Download(driveService, choppedPath));
-        }
-
-        public IDictionary<string, string> UpdateHashes()
-        {
-            IDictionary<string, string> calculatedHashesForRelativePaths =
-                CalculateHashesForServerDirWithRelativePaths();
-            _localFileManager.SaveObjectAsJsonFile(Paths.Hashes, calculatedHashesForRelativePaths);
-            return calculatedHashesForRelativePaths;
+            return _gDriveServicePool.ExecuteWithDriveService(driveService => Download(driveService, choppedPath));
         }
 
         public void UpdateRemoteFile(string path)
         {
-            _driveServiceRetrier.RetryUntilThrowsNoException(
-                () => _driveServicePool.ExecuteWithDriveService(driveService =>
+            _gDriveServiceRetrier.RetryUntilThrowsNoException(
+                () => _gDriveServicePool.ExecuteWithDriveService(driveService =>
                     UploadAndOverwriteFile(driveService, path, false)),
                 e => _log.Error("Retrying to update: {}", path));
         }
 
         public void UploadAndOverwriteFile(string path, bool isAppFile)
         {
-            _driveServicePool.ExecuteWithDriveService(driveService =>
+            _gDriveServicePool.ExecuteWithDriveService(driveService =>
             {
                 UploadAndOverwriteFile(driveService, path, isAppFile);
             });
         }
 
-        public void UploadFile(CalculatedStatus calculatedStatus, string path)
+        public void UploadFile(RuntimeStatus runtimeStatus, string path)
         {
-            _driveServiceRetrier.RetryUntilThrowsNoException(
-                () => _driveServicePool.ExecuteWithDriveService(driveService =>
+            _gDriveServiceRetrier.RetryUntilThrowsNoException(
+                () => _gDriveServicePool.ExecuteWithDriveService(driveService =>
                 {
-                    if (calculatedStatus == CalculatedStatus.UploadedCorruptly &&
+                    if (runtimeStatus == RuntimeStatus.UploadedCorruptly &&
                         IsFilePresentOnDrive(driveService, path))
                         _log.DriveWarn("Already present: {}", path);
                     else
                         UploadFile(driveService, path, false);
                 }),
                 e => _log.Error("Retrying to upload: {}", path));
-        }
-
-        private IDictionary<FileInfo, string> CalculateHashesForServerDirWithAbsolutePaths()
-        {
-            HashCalculator serverDirHashCalculator = NewServerDirHashCalculator();
-            return serverDirHashCalculator.CalculateHashes();
-        }
-
-        private IDictionary<string, string> CalculateHashesForServerDirWithRelativePaths()
-        {
-            IDictionary<FileInfo, string> calculatedHashesForAbsolutePaths =
-                CalculateHashesForServerDirWithAbsolutePaths();
-            return calculatedHashesForAbsolutePaths.ToDictionary(
-                ExtractKeyFromFileToRelativePath,
-                pair => pair.Value);
         }
 
         private string CreateRemoteFolder(DriveService driveService, string path)
@@ -183,7 +105,7 @@ namespace McSync.Files.Remote
 
             bool haveCreated = false;
             string lastParent = string.Empty;
-            string[] folders = _localFileManager.GetRelativeFilePath(path, Paths.ServerPath).Split('\\');
+            string[] folders = _pathUtils.GetRelativeFilePath(path, Paths.ServerPath).Split('\\');
             foreach (string folder in folders)
             {
                 string folderId = ExecuteGetIdOfPathRequest(driveService, folder, lastParent);
@@ -208,7 +130,7 @@ namespace McSync.Files.Remote
         {
             _log.Info("Deleting: {}", path);
 
-            string fileId = GetIdOfPath(path);
+            string fileId = GetIdOfPathOnDrive(path);
 
             if (string.IsNullOrEmpty(fileId))
             {
@@ -217,13 +139,13 @@ namespace McSync.Files.Remote
             }
 
             driveService.Files.Delete(fileId).Execute();
-            _log.Drive("Deleted: {}", _localFileManager.GetRelativeFilePath(path, Paths.ServerPath));
+            _log.Drive("Deleted: {}", _pathUtils.GetRelativeFilePath(path, Paths.ServerPath));
         }
 
         private DownloadStatus Download(DriveService driveService, string path)
         {
             _log.Info("Downloading: {}", path);
-            string fileId = GetIdOfPath(path);
+            string fileId = GetIdOfPathOnDrive(path);
 
             if (fileId == null)
                 return DownloadStatus.Failed;
@@ -247,7 +169,6 @@ namespace McSync.Files.Remote
                 }
 
                 _log.Drive("Downloaded: {}", path);
-
                 return downloadStatus;
             }
         }
@@ -309,17 +230,12 @@ namespace McSync.Files.Remote
             return listRequest.Execute().Files.FirstOrDefault()?.Id;
         }
 
-        private string ExtractKeyFromFileToRelativePath(KeyValuePair<FileInfo, string> pair)
+        private string GetIdOfPathOnDrive(string path)
         {
-            return _localFileManager.GetRelativeFilePath(pair.Key.FullName, Paths.ServerPath);
+            return _gDriveServicePool.ExecuteWithDriveService(driveService => GetIdOfPathOnDrive(driveService, path));
         }
 
-        private string GetIdOfPath(string path)
-        {
-            return _driveServicePool.ExecuteWithDriveService(driveService => GetIdOfPath(driveService, path));
-        }
-
-        private string GetIdOfPath(DriveService driveService, string path)
+        private string GetIdOfPathOnDrive(DriveService driveService, string path)
         {
             if (string.IsNullOrEmpty(path))
                 return "";
@@ -360,37 +276,7 @@ namespace McSync.Files.Remote
 
         private bool IsFilePresentOnDrive(DriveService driveService, string path)
         {
-            return !string.IsNullOrEmpty(GetIdOfPath(driveService, path));
-        }
-
-        private void ListDriveFiles()
-        {
-            // Define parameters of request.
-            FilesResource.ListRequest listRequest =
-                _driveServicePool.ExecuteWithDriveService(driveService => driveService.Files.List());
-            listRequest.PageSize = 10;
-            listRequest.Fields = "nextPageToken, files(id, name, mimeType)";
-
-            // List files.
-            IList<File> files = listRequest.Execute()
-                .Files;
-            Console.WriteLine("Files:");
-            if (files != null && files.Count > 0)
-                foreach (File file in files)
-                    Console.WriteLine("{0} ({1}) {2}", file.Name, file.Id, file.MimeType);
-            else Console.WriteLine("No files found.");
-        }
-
-        private HashCalculator NewServerDirHashCalculator()
-        {
-            List<FileInfo> filteredFilesInDirectory =
-                _localFileManager.FilterFilesInDirectory(Paths.ServerPath);
-            return _hashCalculatorFactory.CreateHashCalculator(filteredFilesInDirectory);
-        }
-
-        private IDictionary<TKey, TValue> ToDictionary<TKey, TValue>(IEnumerable<KeyValuePair<TKey, TValue>> enumerable)
-        {
-            return enumerable.ToDictionary(pair => pair.Key, pair => pair.Value);
+            return !string.IsNullOrEmpty(GetIdOfPathOnDrive(driveService, path));
         }
 
         private void UploadAndOverwriteFile(DriveService driveService, string path, bool isAppFile)
@@ -416,7 +302,7 @@ namespace McSync.Files.Remote
             if (string.IsNullOrEmpty(path))
                 return;
 
-            string relativePath = _localFileManager.GetRelativeFilePath(path, Paths.ServerPath);
+            string relativePath = _pathUtils.GetRelativeFilePath(path, Paths.ServerPath);
             _log.Info("Uploading: {}", relativePath);
 
             const string mimeType = "application/octet-stream";
@@ -424,7 +310,8 @@ namespace McSync.Files.Remote
             string[] pathSplit = path.Split('\\');
             Array.Resize(ref pathSplit, pathSplit.Length - 1);
             string parentPath = string.Join(@"\", pathSplit);
-            string parentId = GetIdOfPath(driveService, parentPath) ?? CreateRemoteFolder(driveService, parentPath);
+            string parentId = GetIdOfPathOnDrive(driveService, parentPath) ??
+                              CreateRemoteFolder(driveService, parentPath);
 
             using (var fs = new FileStream(isAppFile ? path : $@"{Paths.ServerPath}\{path}", FileMode.Open))
             {

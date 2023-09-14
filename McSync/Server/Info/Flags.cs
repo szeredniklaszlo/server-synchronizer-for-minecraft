@@ -2,7 +2,7 @@
 {
     public abstract class Flags
     {
-        public PersistedStatus? LifecycleStatus { get; set; }
+        public PersistedStatus? PersistedStatus { get; set; }
         public string Owner { get; set; }
     }
 }

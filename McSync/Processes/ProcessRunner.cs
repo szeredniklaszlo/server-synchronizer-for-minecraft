@@ -37,7 +37,7 @@ namespace McSync.Processes
 
             foreach (Process process in processes) process.WaitForExit();
 
-            _log.Server(CalculatedStatus.Stopped);
+            _log.Server(RuntimeStatus.Stopped);
         }
     }
 }

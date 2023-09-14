@@ -2,7 +2,7 @@
 
 namespace McSync.Utils
 {
-    public class DriveServiceRetrier
+    public class GDriveServiceRetrier
     {
         public void RetryUntilThrowsNoException(Action retryableAction, Action<Exception> actionOnException)
         {

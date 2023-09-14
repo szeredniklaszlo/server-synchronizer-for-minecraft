@@ -1,4 +1,6 @@
-﻿using McSync.Files.Local;
+﻿using System.Collections.Generic;
+using Google.Apis.Download;
+using McSync.Files.Local;
 using McSync.Files.Remote;
 using McSync.Utils;
 
@@ -6,23 +8,30 @@ namespace McSync.Files
 {
     public class FileSynchronizer
     {
-        private readonly LocalFileManager _localFileManager;
-
         // TODO: write logs
         private readonly Log _log;
-        private readonly RemoteFileManager _remoteFileManager;
 
-        public FileSynchronizer(LocalFileManager localFileManager, RemoteFileManager remoteFileManager, Log log)
+        public FileSynchronizer(LocalFileManager localLocalFileManager, RemoteFileManager remoteFileManager, Log log)
         {
-            _localFileManager = localFileManager;
-            _remoteFileManager = remoteFileManager;
+            LocalFileManager = localLocalFileManager;
+            RemoteFileManager = remoteFileManager;
             _log = log;
+        }
+
+        public LocalFileManager LocalFileManager { get; }
+        public RemoteFileManager RemoteFileManager { get; }
+
+        public IDictionary<string, string> DownloadHashes()
+        {
+            return DownloadJsonFile<Dictionary<string, string>>(Paths.Hashes);
         }
 
         public T DownloadJsonFile<T>(string path)
         {
-            _remoteFileManager.DownloadOrCreateAppJsonFile(path);
-            return _localFileManager.LoadObjectFromJsonFile<T>(path);
+            DownloadStatus downloadStatus = RemoteFileManager.DownloadServerOrAppFile(path);
+            if (downloadStatus == DownloadStatus.Failed) LocalFileManager.SaveObjectAsJsonFile(path, new object());
+
+            return LocalFileManager.LoadObjectFromJsonFile<T>(path);
         }
     }
 }

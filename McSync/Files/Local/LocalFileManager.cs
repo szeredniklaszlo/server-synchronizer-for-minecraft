@@ -17,6 +17,19 @@ namespace McSync.Files.Local
             _log = log;
         }
 
+        public void DeleteIfExisting(string localPath)
+        {
+            try
+            {
+                File.Delete($@"{Paths.ServerPath}\{localPath}");
+                _log.Local("Deleted: {}", localPath);
+            }
+            catch (Exception)
+            {
+                _log.Local("Already deleted: {}", localPath);
+            }
+        }
+
         public List<FileInfo> FilterFilesInDirectory(string directoryPath, List<string> filters = null)
         {
             filters = filters ?? new List<string>();
@@ -30,23 +43,6 @@ namespace McSync.Files.Local
             return filteredFileInfos;
         }
 
-        public string GetRelativeFilePath(string fullPath, string relativeToPath)
-        {
-            if (!IsAbsolutePathValid(fullPath))
-                throw new ArgumentException($"Invalid path: {fullPath}", nameof(fullPath));
-
-            if (!IsAbsolutePathValid(relativeToPath))
-                throw new ArgumentException($"Invalid path: {relativeToPath}", nameof(relativeToPath));
-
-            relativeToPath = AttachSlashIfNotPresent(relativeToPath);
-            if (!fullPath.StartsWith(relativeToPath))
-                throw new ArgumentException(
-                    $"Invalid paths: relativeToPath |{relativeToPath}| is not contained by fullPath |{fullPath}|",
-                    nameof(relativeToPath));
-
-            return SplitFullPathWithRelativePath(fullPath, relativeToPath);
-        }
-
         public T LoadObjectFromJsonFile<T>(string path)
         {
             if (!File.Exists(path))
@@ -56,34 +52,11 @@ namespace McSync.Files.Local
             return JsonConvert.DeserializeObject<T>(json);
         }
 
-        public void SaveObjectAsJsonFile(string filePath, object obj)
+        public void SaveObjectAsJsonFile(string path, object obj)
         {
             string json = JsonConvert.SerializeObject(obj);
-            File.WriteAllText(filePath, json);
-            _log.Local("Saved: {}", filePath);
-        }
-
-        private string AttachSlashIfNotPresent(string relativeToPath)
-        {
-            if (!relativeToPath.EndsWith("\\"))
-                relativeToPath += "\\";
-
-            return relativeToPath;
-        }
-
-        private bool IsAbsolutePathValid(string path)
-        {
-            if (string.IsNullOrEmpty(path))
-                return false;
-
-            bool isValidUri = Uri.TryCreate(path, UriKind.Absolute, out Uri pathUri);
-            return isValidUri && pathUri != null && pathUri.IsLoopback;
-        }
-
-        private string SplitFullPathWithRelativePath(string fullPath, string relativeToPath)
-        {
-            string[] relativePath = fullPath.Split(new[] {relativeToPath}, StringSplitOptions.RemoveEmptyEntries);
-            return relativePath.First();
+            File.WriteAllText(path, json);
+            _log.Local("Local file created: {}", path);
         }
     }
 }

@@ -1,6 +1,7 @@
 ﻿using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using McSync.Utils;
 using Standart.Hash.xxHash;
@@ -11,16 +12,26 @@ namespace McSync.Files.Local.HashCalculator
     {
         private readonly List<FileInfo> _files;
         private readonly Log _log;
+        private readonly PathUtils _pathUtils;
 
         private ConcurrentDictionary<FileInfo, string> _hashesCalculated;
 
-        public HashCalculator(Log log, List<FileInfo> files)
+        public HashCalculator(Log log, PathUtils pathUtils, List<FileInfo> files)
         {
             _log = log;
+            _pathUtils = pathUtils;
             _files = files;
         }
 
-        public IDictionary<FileInfo, string> CalculateHashes()
+        public IDictionary<string, string> CalculateHashesForFilePaths()
+        {
+            IDictionary<FileInfo, string> hashesForFiles = CalculateHashesForFiles();
+            return hashesForFiles.ToDictionary(
+                ExtractKeyFromFileToRelativePath,
+                pair => pair.Value);
+        }
+
+        public IDictionary<FileInfo, string> CalculateHashesForFiles()
         {
             _log.Info("Calculating hashes");
             _hashesCalculated = new ConcurrentDictionary<FileInfo, string>();
@@ -43,6 +54,11 @@ namespace McSync.Files.Local.HashCalculator
                 stream.Position = 0;
                 return xxHash64.ComputeHash(stream).ToString();
             }
+        }
+
+        private string ExtractKeyFromFileToRelativePath(KeyValuePair<FileInfo, string> pair)
+        {
+            return _pathUtils.GetRelativeFilePath(pair.Key.FullName, Paths.ServerPath);
         }
     }
 }

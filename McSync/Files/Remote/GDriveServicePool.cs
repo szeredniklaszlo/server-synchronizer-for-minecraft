@@ -5,18 +5,17 @@ using McSync.Utils;
 
 namespace McSync.Files.Remote
 {
-    public class DriveServicePool
+    public class GDriveServicePool
     {
         private readonly ConcurrentQueue<DriveService> _availableServices = new ConcurrentQueue<DriveService>();
-
-        private readonly DriveServiceFactory _driveServiceFactory;
+        private readonly GDriveServiceFactory _gDriveServiceFactory;
 
         // TODO: write logs
         private readonly Log _log;
 
-        public DriveServicePool(DriveServiceFactory driveServiceFactory, Log log)
+        public GDriveServicePool(GDriveServiceFactory gDriveServiceFactory, Log log)
         {
-            _driveServiceFactory = driveServiceFactory;
+            _gDriveServiceFactory = gDriveServiceFactory;
             _log = log;
         }
 
@@ -53,7 +52,7 @@ namespace McSync.Files.Remote
 
         private DriveService CreateNewDriveService()
         {
-            return _driveServiceFactory.CreateDriveService();
+            return _gDriveServiceFactory.CreateDriveService();
         }
 
         private void ReleaseDriveService(DriveService service)

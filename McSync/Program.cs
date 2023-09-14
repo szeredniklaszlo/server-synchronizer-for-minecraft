@@ -18,7 +18,7 @@ namespace McSync
         public static readonly ParallelOptions ParallelOptions = new ParallelOptions {MaxDegreeOfParallelism = 24};
 
         private static IContainer _container;
-        private static ServerManager _serverManager;
+        private static ServerRunner _serverRunner;
         private static Log _log;
 
         public static void UpdateConsoleTitleWithNetworkTraffic()
@@ -36,24 +36,26 @@ namespace McSync
             builder.Register(container =>
             {
                 var log = container.Resolve<Log>();
-                return new DriveServiceFactory(AppName, Paths.Credentials, log);
+                return new GDriveServiceFactory(AppName, Paths.Credentials, log);
             }).SingleInstance();
-            builder.RegisterType<DriveServicePool>().SingleInstance();
-
-            builder.RegisterType<DriveServiceRetrier>().SingleInstance();
+            builder.RegisterType<GDriveServicePool>().SingleInstance();
+            builder.RegisterType<GDriveServiceRetrier>().SingleInstance();
 
             builder.RegisterType<LocalFileManager>().SingleInstance();
-            builder.RegisterType<HashCalculatorFactory>();
+            builder.RegisterType<HashCalculatorFactory>().SingleInstance();
             builder.RegisterType<RemoteFileManager>().SingleInstance();
             builder.RegisterType<FileSynchronizer>().SingleInstance();
 
             builder.RegisterType<ManagementObjectSearcher>();
             builder.RegisterType<HardwareInfoRetriever>();
 
+            builder.RegisterType<RuntimeStatusUpdater>().SingleInstance();
             builder.RegisterType<ProcessRunner>().SingleInstance();
             builder.RegisterType<ServerProcessRunner>().SingleInstance();
             builder.RegisterType<FlagSynchronizer>().SingleInstance();
-            builder.RegisterType<ServerManager>().SingleInstance();
+            builder.RegisterType<LocalServerUpdater>().SingleInstance();
+            builder.RegisterType<RemoteServerUpdater>().SingleInstance();
+            builder.RegisterType<ServerRunner>().SingleInstance();
 
             _container = builder.Build();
         }
@@ -63,13 +65,13 @@ namespace McSync
             InitializeIoCContainer();
             ResolveProgramDependencies();
 
-            _serverManager.Run();
+            _serverRunner.Execute();
             _log.Info("Done");
         }
 
         private static void ResolveProgramDependencies()
         {
-            _serverManager = _container.Resolve<ServerManager>();
+            _serverRunner = _container.Resolve<ServerRunner>();
             _log = _container.Resolve<Log>();
         }
     }

@@ -69,12 +69,12 @@ namespace McSync.Utils
             Local(message, new[] {innerContent});
         }
 
-        internal void Server(CalculatedStatus calculatedStatus)
+        internal void Server(RuntimeStatus runtimeStatus)
         {
             lock (ConsoleColorLock)
             {
                 Console.ForegroundColor = ConsoleColor.Cyan;
-                LogPad("[SERVER]", "Server status: {}", new object[] {calculatedStatus.ToString()});
+                LogPad("[SERVER]", "Server status: {}", new object[] {runtimeStatus.ToString()});
                 Console.ForegroundColor = ConsoleColor.White;
             }
         }

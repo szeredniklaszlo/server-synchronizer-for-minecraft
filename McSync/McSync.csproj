@@ -97,30 +97,36 @@
         <Compile Include="Files\FileSynchronizer.cs"/>
         <Compile Include="Files\FlagSynchronizer.cs"/>
         <Compile Include="Files\Local\HashCalculator\HashCalculator.cs"/>
-        <Compile Include="Files\Local\HashCalculator\HashCalculatorConfig.cs"/>
+        <Compile Include="Files\Local\HashCalculator\FiltersForDirectory.cs"/>
         <Compile Include="Files\Local\HashCalculator\HashCalculatorFactory.cs"/>
         <Compile Include="Files\Local\Paths.cs"/>
         <Compile Include="Files\Local\LocalFileManager.cs"/>
-        <Compile Include="Files\Remote\DriveServiceFactory.cs"/>
-        <Compile Include="Files\Remote\DriveServicePool.cs"/>
+        <Compile Include="Files\Remote\GDriveServiceFactory.cs"/>
+        <Compile Include="Files\Remote\GDriveServicePool.cs"/>
         <Compile Include="Files\Remote\RemoteFileManager.cs"/>
         <Compile Include="Processes\ProcessRunner.cs"/>
         <Compile Include="Processes\ServerProcessRunner.cs"/>
         <Compile Include="Program.cs"/>
         <Compile Include="Properties\AssemblyInfo.cs"/>
-        <Compile Include="Server\Info\CalculatedStatus.cs"/>
+        <Compile Include="Server\Info\RuntimeStatus.cs"/>
         <Compile Include="Server\Info\Flags.cs"/>
         <Compile Include="Server\Info\PersistedStatus.cs"/>
-        <Compile Include="Server\ServerManager.cs"/>
+        <Compile Include="Server\LocalServerUpdater.cs"/>
+        <Compile Include="Server\RemoteServerUpdater.cs"/>
+        <Compile Include="Server\ServerRunner.cs"/>
+        <Compile Include="Server\RuntimeStatusUpdater.cs"/>
+        <Compile Include="Utils\EnumerableUtils.cs"/>
         <Compile Include="Utils\HardwareInfoRetriever.cs"/>
         <Compile Include="Utils\Log.cs"/>
-        <Compile Include="Utils\DriveServiceRetrier.cs"/>
+        <Compile Include="Utils\GDriveServiceRetrier.cs"/>
+        <Compile Include="Utils\PathUtils.cs"/>
     </ItemGroup>
     <ItemGroup>
         <None Include="App.config"/>
         <None Include="packages.config"/>
     </ItemGroup>
     <ItemGroup>
+        <Content Include=".pumlexclude"/>
         <Content Include="Key\credentials.json">
             <CopyToOutputDirectory>Always</CopyToOutputDirectory>
         </Content>

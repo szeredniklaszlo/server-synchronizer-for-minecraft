@@ -65,13 +65,13 @@ namespace McSync.Processes
 
         private List<Process> StartAllProcesses()
         {
-            _log.Server(CalculatedStatus.Starting);
+            _log.Server(RuntimeStatus.Starting);
 
             ExecuteTokenCreation();
             List<Process> processes = StartServerProcesses();
 
-            _log.Server(CalculatedStatus.Running);
-            _flagSynchronizer.UpdateRemoteFlags(PersistedStatus.Running);
+            _log.Server(RuntimeStatus.Running);
+            _flagSynchronizer.UpdateFlags(PersistedStatus.Running);
             return processes;
         }
 

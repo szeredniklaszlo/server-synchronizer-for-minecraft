@@ -1,6 +1,6 @@
 ﻿namespace McSync.Server.Info
 {
-    public enum CalculatedStatus
+    public enum RuntimeStatus
     {
         Stopped,
         StoppedCorruptly,

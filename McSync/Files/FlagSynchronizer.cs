@@ -1,6 +1,5 @@
 ﻿using System;
 using McSync.Files.Local;
-using McSync.Files.Remote;
 using McSync.Server.Info;
 using McSync.Utils;
 
@@ -10,18 +9,11 @@ namespace McSync.Files
     {
         private readonly FileSynchronizer _fileSynchronizer;
         private readonly HardwareInfoRetriever _hardwareInfoRetriever;
-        private readonly LocalFileManager _localFileManager;
         private readonly Log _log;
-        private readonly RemoteFileManager _remoteFileManager;
 
-        public FlagSynchronizer(Log log,
-            RemoteFileManager remoteFileManager,
-            LocalFileManager localFileManager,
-            HardwareInfoRetriever hardwareInfoRetriever, FileSynchronizer fileSynchronizer)
+        public FlagSynchronizer(Log log, HardwareInfoRetriever hardwareInfoRetriever, FileSynchronizer fileSynchronizer)
         {
             _log = log;
-            _remoteFileManager = remoteFileManager;
-            _localFileManager = localFileManager;
             _hardwareInfoRetriever = hardwareInfoRetriever;
             _fileSynchronizer = fileSynchronizer;
         }
@@ -33,27 +25,30 @@ namespace McSync.Files
             Flags = _fileSynchronizer.DownloadJsonFile<Flags>(Paths.Flags);
         }
 
-        public void UpdateRemoteFlags(PersistedStatus status)
+        public bool IsVeryFirstServerStart()
+        {
+            return Flags.Owner == null && Flags.PersistedStatus == null;
+        }
+
+        public void UpdateFlags(PersistedStatus status)
         {
             UpdateLocalFlags(status);
-            _remoteFileManager.UploadAndOverwriteFile(Paths.Flags, true);
+            _fileSynchronizer.RemoteFileManager.UploadAndOverwriteFile(Paths.Flags, true);
         }
 
         public void ValidateFlags()
         {
-            if (string.IsNullOrEmpty(Flags.Owner) || Flags.LifecycleStatus == null)
+            if (string.IsNullOrEmpty(Flags.Owner) || Flags.PersistedStatus == null)
                 throw new ArgumentException("Flags are corrupted");
         }
 
         private void UpdateLocalFlags(PersistedStatus status)
         {
-            var flags = _localFileManager.LoadObjectFromJsonFile<Flags>(Paths.Flags);
+            Flags.Owner = _hardwareInfoRetriever.GetPcId();
+            Flags.PersistedStatus = status;
 
-            flags.Owner = _hardwareInfoRetriever.GetPcId();
-            flags.LifecycleStatus = status;
-
-            _localFileManager.SaveObjectAsJsonFile(Paths.Flags, flags);
-            _log.Info($"Flag 'running' updated to '{status}'");
+            _fileSynchronizer.LocalFileManager.SaveObjectAsJsonFile(Paths.Flags, Flags);
+            _log.Info($"Flag 'PersistedStatus' updated to '{status}'");
         }
     }
 }

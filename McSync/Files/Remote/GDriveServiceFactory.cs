@@ -10,18 +10,17 @@ using McSync.Utils;
 
 namespace McSync.Files.Remote
 {
-    public class DriveServiceFactory
+    public class GDriveServiceFactory
     {
         private static readonly object TokenFileLock = new object();
 
         private readonly string _appName;
-
         private readonly string _credentialsPath;
 
         // TODO: write logs
         private readonly Log _log;
 
-        public DriveServiceFactory(string appName, string credentialsPath, Log log)
+        public GDriveServiceFactory(string appName, string credentialsPath, Log log)
         {
             _appName = appName;
             _credentialsPath = credentialsPath;

@@ -2,9 +2,9 @@
 
 namespace McSync.Files.Local.HashCalculator
 {
-    public class HashCalculatorConfig
+    public class FiltersForDirectory
     {
-        public HashCalculatorConfig(string directoryPath, List<string> filters = null)
+        public FiltersForDirectory(string directoryPath, List<string> filters = null)
         {
             DirectoryPath = directoryPath;
             Filters = filters;
