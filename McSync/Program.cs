@@ -32,6 +32,8 @@ namespace McSync
         {
             var builder = new ContainerBuilder();
             builder.RegisterType<Log>();
+            builder.RegisterType<PathUtils>();
+            builder.RegisterType<EnumerableUtils>();
 
             builder.Register(container =>
             {

@@ -15,6 +15,7 @@ namespace McSync.Utils
                 }
                 catch (Exception e)
                 {
+                    Console.WriteLine(e);
                     actionOnException(e);
                 }
         }

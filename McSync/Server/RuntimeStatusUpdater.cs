@@ -54,9 +54,9 @@ namespace McSync.Server
                 case PersistedStatus.Updating:
                     RuntimeStatus = RuntimeStatus.AlreadyUpdatingElsewhere;
                     break;
+                default:
+                    throw new ArgumentException("Flags are corrupted");
             }
-
-            throw new ArgumentException("Flags are corrupted");
         }
     }
 }

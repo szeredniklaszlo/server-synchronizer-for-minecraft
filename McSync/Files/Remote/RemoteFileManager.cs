@@ -139,7 +139,7 @@ namespace McSync.Files.Remote
             }
 
             driveService.Files.Delete(fileId).Execute();
-            _log.Drive("Deleted: {}", _pathUtils.GetRelativeFilePath(path, Paths.ServerPath));
+            _log.Drive("Deleted: {}", path);
         }
 
         private DownloadStatus Download(DriveService driveService, string path)
@@ -288,10 +288,10 @@ namespace McSync.Files.Remote
 
             switch (path)
             {
-                case "flags.json":
+                case Paths.Flags:
                     _log.Info("Server status updated on the Drive");
                     break;
-                case "hashes.json":
+                case Paths.Hashes:
                     _log.Info("Hashes of server files saved to the Drive");
                     break;
             }
@@ -302,9 +302,7 @@ namespace McSync.Files.Remote
             if (string.IsNullOrEmpty(path))
                 return;
 
-            string relativePath = _pathUtils.GetRelativeFilePath(path, Paths.ServerPath);
-            _log.Info("Uploading: {}", relativePath);
-
+            _log.Info("Uploading: {}", path);
             const string mimeType = "application/octet-stream";
 
             string[] pathSplit = path.Split('\\');
@@ -313,12 +311,13 @@ namespace McSync.Files.Remote
             string parentId = GetIdOfPathOnDrive(driveService, parentPath) ??
                               CreateRemoteFolder(driveService, parentPath);
 
-            using (var fs = new FileStream(isAppFile ? path : $@"{Paths.ServerPath}\{path}", FileMode.Open))
+            using (var fs = new FileStream(!isAppFile ? $@"{Paths.ServerPath}\{path}" : $@"{Paths.AppPath}\{path}",
+                       FileMode.Open))
             {
                 ExecuteCreateRequest(driveService, parentId, path.Split('\\').LastOrDefault(), mimeType, fs);
             }
 
-            _log.Drive("Uploaded: {}", relativePath);
+            _log.Drive("Uploaded: {}", path);
         }
 
         private void UploadRequest_ProgressChanged(IUploadProgress obj)
