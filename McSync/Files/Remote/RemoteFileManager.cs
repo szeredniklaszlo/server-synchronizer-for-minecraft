@@ -105,7 +105,8 @@ namespace McSync.Files.Remote
 
             bool haveCreated = false;
             string lastParent = string.Empty;
-            string[] folders = _pathUtils.GetRelativeFilePath(path, Paths.ServerPath).Split('\\');
+            string relativeFilePath = _pathUtils.GetRelativeFilePath(path, Paths.ServerPath);
+            string[] folders = relativeFilePath.Split('\\');
             foreach (string folder in folders)
             {
                 string folderId = ExecuteGetIdOfPathRequest(driveService, folder, lastParent);
@@ -120,8 +121,8 @@ namespace McSync.Files.Remote
             }
 
             if (haveCreated)
-                _log.Drive("Created: {}", path);
-            else _log.DriveWarn("Already created: {}", path);
+                _log.Drive("Created: {}", relativeFilePath);
+            else _log.DriveWarn("Already created: {}", relativeFilePath);
 
             return lastParent;
         }

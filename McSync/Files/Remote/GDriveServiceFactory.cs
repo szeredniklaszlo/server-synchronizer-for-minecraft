@@ -46,7 +46,6 @@ namespace McSync.Files.Remote
                 {
                     try
                     {
-                        _log.Info("Logging in...");
                         return LoginWithCredentials(stream);
                     }
                     catch (Exception e)
@@ -63,6 +62,10 @@ namespace McSync.Files.Remote
         // it is created automatically when the authorization flow completes for the first time.
         private UserCredential LoginWithCredentials(FileStream credentialsFileStream)
         {
+            bool wasLoggedOut = !Directory.Exists($@"{Paths.AppPath}\{Paths.TokenFolder}")
+                                || Directory.GetFiles($@"{Paths.AppPath}\{Paths.TokenFolder}").Length == 0;
+            if (wasLoggedOut) _log.Info("Logging in...");
+
             UserCredential userCredential = GoogleWebAuthorizationBroker.AuthorizeAsync(
                 GoogleClientSecrets.FromStream(credentialsFileStream).Secrets,
                 new[] {DriveService.Scope.Drive},
@@ -70,7 +73,7 @@ namespace McSync.Files.Remote
                 CancellationToken.None,
                 new FileDataStore(Paths.TokenFolder, true)).Result;
 
-            _log.Info("Logged in successfully!");
+            if (wasLoggedOut) _log.Info("Logged in successfully!");
             return userCredential;
         }
 
