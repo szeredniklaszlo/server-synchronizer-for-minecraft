@@ -64,8 +64,7 @@ namespace McSync.Files.Remote
 
         public DownloadStatus DownloadServerOrAppFile(string path)
         {
-            string choppedPath = path.Split(new[] {Paths.ServerPath + @"\"}, StringSplitOptions.None).Last();
-            return _gDriveServicePool.ExecuteWithDriveService(driveService => Download(driveService, choppedPath));
+            return _gDriveServicePool.ExecuteWithDriveService(driveService => Download(driveService, path));
         }
 
         public void UpdateRemoteFile(string path)
@@ -145,8 +144,9 @@ namespace McSync.Files.Remote
 
         private DownloadStatus Download(DriveService driveService, string path)
         {
-            _log.Info("Downloading: {}", path);
-            string fileId = GetIdOfPathOnDrive(path);
+            string relativePath = path.Split(new[] {Paths.ServerPath + @"\"}, StringSplitOptions.None).Last();
+            _log.Info("Downloading: {}", relativePath);
+            string fileId = GetIdOfPathOnDrive(relativePath);
 
             if (fileId == null)
                 return DownloadStatus.Failed;
@@ -165,11 +165,11 @@ namespace McSync.Files.Remote
 
                 if (downloadStatus == DownloadStatus.Failed)
                 {
-                    _log.Error("Download failed: {}", path);
-                    throw new DownloadFailedException($"Download failed: {path}");
+                    _log.Error("Download failed: {}", relativePath);
+                    throw new DownloadFailedException($"Download failed: {relativePath}");
                 }
 
-                _log.Drive("Downloaded: {}", path);
+                _log.Drive("Downloaded: {}", relativePath);
                 return downloadStatus;
             }
         }
