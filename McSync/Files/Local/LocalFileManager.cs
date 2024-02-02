@@ -17,6 +17,11 @@ namespace McSync.Files.Local
             _log = log;
         }
 
+        public List<string> DefaultFilters { get; } = new List<string>()
+        {
+            "sync", "libraries", "openjdk", "net5.0", "ngrok.cmd", "run.cmd"
+        };
+
         public void DeleteIfExisting(string localPath)
         {
             try
@@ -32,7 +37,7 @@ namespace McSync.Files.Local
 
         public List<FileInfo> FilterFilesInDirectory(string directoryPath, List<string> filters = null)
         {
-            filters = filters ?? new List<string>();
+            filters = filters ?? DefaultFilters;
             var directoryInfo = new DirectoryInfo(directoryPath);
             List<FileInfo> filteredFileInfos = directoryInfo.EnumerateFiles("*", SearchOption.AllDirectories)
                 .Where(file => filters.TrueForAll(

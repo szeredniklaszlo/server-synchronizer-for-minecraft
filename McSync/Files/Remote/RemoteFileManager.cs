@@ -335,7 +335,7 @@ namespace McSync.Files.Remote
 
         private void UploadRequest_ResponseReceived(File obj)
         {
-            // TODO: get to remember wtf is this for
+            // TODO: potential log
         }
     }
 }

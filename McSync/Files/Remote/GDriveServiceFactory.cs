@@ -1,4 +1,5 @@
-﻿using System.IO;
+﻿using System;
+using System.IO;
 using System.Threading;
 using Google.Apis.Auth.OAuth2;
 using Google.Apis.Drive.v3;
@@ -17,7 +18,6 @@ namespace McSync.Files.Remote
         private readonly string _appName;
         private readonly string _credentialsPath;
 
-        // TODO: write logs
         private readonly Log _log;
 
         public GDriveServiceFactory(string appName, string credentialsPath, Log log)
@@ -29,40 +29,58 @@ namespace McSync.Files.Remote
 
         public DriveService CreateDriveService()
         {
-            lock (TokenFileLock)
-            {
-                UserCredential userCredential = CreateUserCredentialAndTokenJsonFile();
-                // TODO: create a file upload test request, and if an exception is thrown, catch it, 
-                // so the application wont fail to start when the tokens expire in the token.json folder,
-                // delete the token folder, and call CreateUserCredentialAndTokenJsonFile again.
-                // OR easier: delete token folder on every application close,
-                // so on the next login it will force the user to login again
-                return NewDriveServiceAuthorizedByCredentials(userCredential);
-            }
+            UserCredential userCredential = LoginToGAccountAsAppThroughBrowser();
+            // TODO: create a file upload test request, and if an exception is thrown, catch it, 
+            // so the application wont fail to start when the tokens expire in the token.json folder,
+            // delete the token folder, and call CreateUserCredentialAndTokenJsonFile again.
+            // OR easier: delete token folder on every application start,
+            // so it will force the user to login again
+            return NewDriveServiceAuthorized(userCredential);
         }
 
-        private UserCredential CreateUserCredentialAndTokenJsonFile()
+        private UserCredential LoginToGAccountAsAppThroughBrowser()
         {
             using (FileStream stream = File.Open(_credentialsPath, FileMode.Open, FileAccess.Read, FileShare.Read))
             {
-                // The folder "token" stores the user's access and refresh tokens, and is created
-                // automatically when the authorization flow completes for the first time.
-                return GoogleWebAuthorizationBroker.AuthorizeAsync(
-                    GoogleClientSecrets.FromStream(stream).Secrets,
-                    new[] {DriveService.Scope.Drive},
-                    "user",
-                    CancellationToken.None,
-                    new FileDataStore(Paths.TokenFolder, true)).Result;
+                lock (TokenFileLock)
+                {
+                    try
+                    {
+                        _log.Info("Logging in...");
+                        return LoginWithCredentials(stream);
+                    }
+                    catch (Exception e)
+                    {
+                        _log.Error("Login failed. Try to login again!");
+                        Directory.Delete(Paths.TokenFolder, true);
+                        return LoginWithCredentials(stream);
+                    }
+                }
             }
         }
 
-        private DriveService NewDriveServiceAuthorizedByCredentials(UserCredential userCredential)
+        // The folder "token" stores the user's access and refresh tokens after login,
+        // it is created automatically when the authorization flow completes for the first time.
+        private UserCredential LoginWithCredentials(FileStream credentialsFileStream)
+        {
+            UserCredential userCredential = GoogleWebAuthorizationBroker.AuthorizeAsync(
+                GoogleClientSecrets.FromStream(credentialsFileStream).Secrets,
+                new[] {DriveService.Scope.Drive},
+                "user",
+                CancellationToken.None,
+                new FileDataStore(Paths.TokenFolder, true)).Result;
+
+            _log.Info("Logged in successfully!");
+            return userCredential;
+        }
+
+        private DriveService NewDriveServiceAuthorized(UserCredential userCredential)
         {
             return new DriveService(new BaseClientService.Initializer
             {
                 HttpClientInitializer = userCredential,
                 ApplicationName = _appName,
-                DefaultExponentialBackOffPolicy = ExponentialBackOffPolicy.Exception
+                DefaultExponentialBackOffPolicy = ExponentialBackOffPolicy.UnsuccessfulResponse503
             });
         }
     }
