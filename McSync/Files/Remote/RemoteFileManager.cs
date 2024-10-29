@@ -49,7 +49,7 @@ namespace McSync.Files.Remote
                 _gDriveServiceRetrier.RetryUntilThrowsNoException(
                     () => _gDriveServicePool.ExecuteWithDriveService(driveService =>
                         CreateRemoteFolder(driveService, childDirectory.FullName)),
-                    (e, retries) => _log.Error(retries + "th try to create: {} Retrying...", childDirectory)));
+                    (e, retries) => _log.Error(retries + ". try to create: {} Retrying...", childDirectory)));
 
             foreach (DirectoryInfo childDirectory in childDirectories)
                 CreateRemoteFolderTreeFromLocalFolderRecursively(childDirectory.FullName);
@@ -59,7 +59,7 @@ namespace McSync.Files.Remote
         {
             _gDriveServiceRetrier.RetryUntilThrowsNoException(
                 () => _gDriveServicePool.ExecuteWithDriveService(driveService => DeleteRemoteFile(driveService, path)),
-                (e, retries) => _log.Error(retries + "th try to delete: {} Retrying...", path));
+                (e, retries) => _log.Error(retries + ". try to delete: {} Retrying...", path));
         }
 
         public DownloadStatus DownloadServerOrAppFile(string path)
@@ -72,7 +72,7 @@ namespace McSync.Files.Remote
             _gDriveServiceRetrier.RetryUntilThrowsNoException(
                 () => _gDriveServicePool.ExecuteWithDriveService(driveService =>
                     UploadAndOverwriteFile(driveService, path, false)),
-                (e, retries) => _log.Error(retries + "th try to update: {} Retrying...", path));
+                (e, retries) => _log.Error(retries + ". try to update: {} Retrying...", path));
         }
 
         public void UploadAndOverwriteFile(string path, bool isAppFile)
@@ -97,7 +97,7 @@ namespace McSync.Files.Remote
                         UploadFile(driveService, path, false);
                     }
                 }),
-                (e, retries) => _log.Error(retries + "th try to upload: {} Retrying...", path));
+                (e, retries) => _log.Error(retries + ". try to upload: {} Retrying...", path));
         }
 
         private string CreateRemoteFolder(DriveService driveService, string path)

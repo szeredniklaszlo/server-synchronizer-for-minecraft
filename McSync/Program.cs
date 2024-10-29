@@ -64,10 +64,17 @@ namespace McSync
 
         private static void Main()
         {
-            InitializeIoCContainer();
-            ResolveProgramDependencies();
+            try
+            {
+                InitializeIoCContainer();
+                ResolveProgramDependencies();
+                _serverRunner.Execute();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex);
+            }
 
-            _serverRunner.Execute();
             _log.Info("Done! Press enter to exit...");
             Console.ReadLine();
         }
