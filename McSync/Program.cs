@@ -15,7 +15,7 @@ namespace McSync
     internal static class Program
     {
         private const string AppName = "Minecraft Server Sync";
-        public static readonly ParallelOptions ParallelOptions = new ParallelOptions {MaxDegreeOfParallelism = 24};
+        public static readonly ParallelOptions ParallelOptions = new ParallelOptions { MaxDegreeOfParallelism = 24 };
 
         private static IContainer _container;
         private static ServerRunner _serverRunner;
@@ -25,7 +25,7 @@ namespace McSync
         {
             var remoteFileManager = _container.Resolve<RemoteFileManager>();
             Console.Title =
-                $"Minecraft Synchronizer | Downloaded / Uploaded: {remoteFileManager.DownloadedMegabytes} / {remoteFileManager.UploadedMegabytes} MB";
+                $"McSync | ↓ / ↑: {remoteFileManager.DownloadedMegabytes} / {remoteFileManager.UploadedMegabytes} MB";
         }
 
         private static void InitializeIoCContainer()
@@ -68,7 +68,8 @@ namespace McSync
             ResolveProgramDependencies();
 
             _serverRunner.Execute();
-            _log.Info("Done");
+            _log.Info("Done! Press enter to exit...");
+            Console.ReadLine();
         }
 
         private static void ResolveProgramDependencies()

@@ -16,11 +16,11 @@ namespace McSync.Files.Remote
 {
     public class RemoteFileManager
     {
-        private readonly object _downloadedMegabytesLock = new object();
         private readonly GDriveServicePool _gDriveServicePool;
         private readonly GDriveServiceRetrier _gDriveServiceRetrier;
         private readonly Log _log;
         private readonly PathUtils _pathUtils;
+        private readonly object _trafficDisplayLock = new object();
         private readonly object _uploadedMegabytesLock = new object();
 
         public RemoteFileManager(GDriveServicePool gDriveServicePool,
@@ -49,7 +49,7 @@ namespace McSync.Files.Remote
                 _gDriveServiceRetrier.RetryUntilThrowsNoException(
                     () => _gDriveServicePool.ExecuteWithDriveService(driveService =>
                         CreateRemoteFolder(driveService, childDirectory.FullName)),
-                    e => _log.Error("Retrying to create: {}", childDirectory)));
+                    (e, retries) => _log.Error(retries + "th try to create: {} Retrying...", childDirectory)));
 
             foreach (DirectoryInfo childDirectory in childDirectories)
                 CreateRemoteFolderTreeFromLocalFolderRecursively(childDirectory.FullName);
@@ -59,7 +59,7 @@ namespace McSync.Files.Remote
         {
             _gDriveServiceRetrier.RetryUntilThrowsNoException(
                 () => _gDriveServicePool.ExecuteWithDriveService(driveService => DeleteRemoteFile(driveService, path)),
-                e => _log.Error("Retrying to delete: {}", path));
+                (e, retries) => _log.Error(retries + "th try to delete: {} Retrying...", path));
         }
 
         public DownloadStatus DownloadServerOrAppFile(string path)
@@ -72,7 +72,7 @@ namespace McSync.Files.Remote
             _gDriveServiceRetrier.RetryUntilThrowsNoException(
                 () => _gDriveServicePool.ExecuteWithDriveService(driveService =>
                     UploadAndOverwriteFile(driveService, path, false)),
-                e => _log.Error("Retrying to update: {}", path));
+                (e, retries) => _log.Error(retries + "th try to update: {} Retrying...", path));
         }
 
         public void UploadAndOverwriteFile(string path, bool isAppFile)
@@ -88,18 +88,21 @@ namespace McSync.Files.Remote
             _gDriveServiceRetrier.RetryUntilThrowsNoException(
                 () => _gDriveServicePool.ExecuteWithDriveService(driveService =>
                 {
-                    if (runtimeStatus == RuntimeStatus.UploadedCorruptly &&
-                        IsFilePresentOnDrive(driveService, path))
-                        _log.DriveWarn("Already present: {}", path);
+                    if (runtimeStatus == RuntimeStatus.UploadedCorruptly && IsFilePresentOnDrive(driveService, path))
+                    {
+                        //_log.DriveWarn("Already present: {}", path);
+                    }
                     else
+                    {
                         UploadFile(driveService, path, false);
+                    }
                 }),
-                e => _log.Error("Retrying to upload: {}", path));
+                (e, retries) => _log.Error(retries + "th try to upload: {} Retrying...", path));
         }
 
         private string CreateRemoteFolder(DriveService driveService, string path)
         {
-            _log.Info("Creating: {}", path);
+            //_log.Info("Creating: {}", path);
             const string mimeType = "application/vnd.google-apps.folder";
 
             bool haveCreated = false;
@@ -120,32 +123,34 @@ namespace McSync.Files.Remote
             }
 
             if (haveCreated)
-                _log.Drive("Created: {}", relativeFilePath);
-            else _log.DriveWarn("Already created: {}", relativeFilePath);
+            {
+                //_log.Drive("Created: {}", relativeFilePath);
+            }
+            //else _log.DriveWarn("Already created: {}", relativeFilePath);
 
             return lastParent;
         }
 
         private void DeleteRemoteFile(DriveService driveService, string path)
         {
-            _log.Info("Deleting: {}", path);
+            //_log.Info("Deleting: {}", path);
 
             string fileId = GetIdOfPathOnDrive(path);
 
             if (string.IsNullOrEmpty(fileId))
             {
-                _log.DriveWarn("Not found: {}", path);
+                //_log.DriveWarn("Not found: {}", path);
                 return;
             }
 
             driveService.Files.Delete(fileId).Execute();
-            _log.Drive("Deleted: {}", path);
+            //_log.Drive("Deleted: {}", path);
         }
 
         private DownloadStatus Download(DriveService driveService, string path)
         {
-            string relativePath = path.Split(new[] {Paths.ServerPath + @"\"}, StringSplitOptions.None).Last();
-            _log.Info("Downloading: {}", relativePath);
+            var relativePath = path.Split(new[] { Paths.ServerPath + @"\" }, StringSplitOptions.None).Last();
+            //_log.Info("Downloading: {}", relativePath);
             string fileId = GetIdOfPathOnDrive(relativePath);
 
             if (fileId == null)
@@ -169,14 +174,14 @@ namespace McSync.Files.Remote
                     throw new DownloadFailedException($"Download failed: {relativePath}");
                 }
 
-                _log.Drive("Downloaded: {}", relativePath);
+                //_log.Drive("Downloaded: {}", relativePath);
                 return downloadStatus;
             }
         }
 
         private void DownloadRequest_ProgressChanged(IDownloadProgress obj)
         {
-            lock (_downloadedMegabytesLock)
+            lock (_trafficDisplayLock)
             {
                 double previousDownloadedMegabytes = DownloadedMegabytes;
                 DownloadedMegabytes += Math.Ceiling(obj.BytesDownloaded / 10000d) / 100d;
@@ -195,7 +200,7 @@ namespace McSync.Files.Remote
                 MimeType = mimeType
             };
             if (!string.IsNullOrEmpty(parentId))
-                driveFile.Parents = new List<string> {parentId};
+                driveFile.Parents = new List<string> { parentId };
 
             if (fileStream != null)
             {
@@ -242,7 +247,7 @@ namespace McSync.Files.Remote
                 return "";
 
             var parents =
-                new LinkedList<string>(path.Split(new[] {@"\"}, StringSplitOptions.None)); // folder1/folder11/file
+                new LinkedList<string>(path.Split(new[] { @"\" }, StringSplitOptions.None)); // folder1/folder11/file
             string fileName = parents.Last.Value; // file
             parents.RemoveLast(); // folder1, folder11
 
@@ -290,10 +295,10 @@ namespace McSync.Files.Remote
             switch (path)
             {
                 case Paths.Flags:
-                    _log.Info("Server status updated on the Drive");
+                    _log.Info("Flags uploaded");
                     break;
                 case Paths.Hashes:
-                    _log.Info("Hashes of server files saved to the Drive");
+                    _log.Info("Hashes uploaded");
                     break;
             }
         }
@@ -303,7 +308,7 @@ namespace McSync.Files.Remote
             if (string.IsNullOrEmpty(path))
                 return;
 
-            _log.Info("Uploading: {}", path);
+            //_log.Info("Uploading: {}", path);
             const string mimeType = "application/octet-stream";
 
             string[] pathSplit = path.Split('\\');
@@ -318,12 +323,12 @@ namespace McSync.Files.Remote
                 ExecuteCreateRequest(driveService, parentId, path.Split('\\').LastOrDefault(), mimeType, fs);
             }
 
-            _log.Drive("Uploaded: {}", path);
+            //_log.Drive("Uploaded: {}", path);
         }
 
         private void UploadRequest_ProgressChanged(IUploadProgress obj)
         {
-            lock (_uploadedMegabytesLock)
+            lock (_trafficDisplayLock)
             {
                 double previousUploadedMegabytes = UploadedMegabytes;
                 UploadedMegabytes += Math.Ceiling(obj.BytesSent / 10000d) / 100d;

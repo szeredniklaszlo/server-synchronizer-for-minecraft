@@ -48,7 +48,7 @@ namespace McSync.Files.Remote
                     {
                         return LoginWithCredentials(stream);
                     }
-                    catch (Exception e)
+                    catch (Exception)
                     {
                         _log.Error("Login failed. Try to login again!");
                         Directory.Delete(Paths.TokenFolder, true);
@@ -68,7 +68,7 @@ namespace McSync.Files.Remote
 
             UserCredential userCredential = GoogleWebAuthorizationBroker.AuthorizeAsync(
                 GoogleClientSecrets.FromStream(credentialsFileStream).Secrets,
-                new[] {DriveService.Scope.Drive},
+                new[] { DriveService.Scope.Drive },
                 "user",
                 CancellationToken.None,
                 new FileDataStore(Paths.TokenFolder, true)).Result;

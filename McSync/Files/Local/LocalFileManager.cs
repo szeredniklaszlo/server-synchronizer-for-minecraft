@@ -27,11 +27,11 @@ namespace McSync.Files.Local
             try
             {
                 File.Delete($@"{Paths.ServerPath}\{localPath}");
-                _log.Local("Deleted: {}", localPath);
+                //_log.Local("Deleted: {}", localPath);
             }
             catch (Exception)
             {
-                _log.Local("Already deleted: {}", localPath);
+                //_log.Local("Already deleted: {}", localPath);
             }
         }
 
@@ -61,7 +61,7 @@ namespace McSync.Files.Local
         {
             string json = JsonConvert.SerializeObject(obj);
             File.WriteAllText(path, json);
-            _log.Local("Local file created: {}", path);
+            //_log.Local("Local file created: {}", path);
         }
     }
 }

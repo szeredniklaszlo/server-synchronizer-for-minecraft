@@ -1,5 +1,4 @@
-﻿using System;
-using McSync.Files;
+﻿using McSync.Files;
 using McSync.Processes;
 using McSync.Server.Info;
 using McSync.Utils;
@@ -35,12 +34,13 @@ namespace McSync.Server
         {
             _flagSynchronizer.DownloadFlags();
             _runtimeStatusUpdater.CalculateInitialRuntimeStatus();
-            HandleInitialStatus();
+            var initializationSuccess = HandleInitialStatus();
+            if (!initializationSuccess) return;
             _serverProcessRunner.RunUntilClosed();
             _remoteServerUpdater.UpdateServerAndFlags();
         }
 
-        private void HandleInitialStatus()
+        private bool HandleInitialStatus()
         {
             _log.Server(_runtimeStatusUpdater.RuntimeStatus);
             switch (_runtimeStatusUpdater.RuntimeStatus)
@@ -48,13 +48,14 @@ namespace McSync.Server
                 case RuntimeStatus.AlreadyRunningElsewhere:
                 case RuntimeStatus.AlreadyUpdatingElsewhere:
                 case RuntimeStatus.Running:
-                    _log.Info("Exiting...");
-                    Environment.Exit(1);
-                    return;
+                    _log.Info("Already running or updating elsewhere. Exiting...");
+                    return false;
                 case RuntimeStatus.Outdated:
                     _localServerUpdater.UpdateServer();
                     break;
             }
+
+            return true;
         }
     }
 }

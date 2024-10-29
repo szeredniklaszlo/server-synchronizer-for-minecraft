@@ -78,7 +78,7 @@ namespace McSync.Server
         {
             _gDriveServiceRetrier.RetryUntilThrowsNoException(
                 () => DownloadServerFile(remotePath),
-                exception => { _log.DriveWarn("Retrying to download: {}", remotePath); });
+                (e, retries) => { _log.DriveWarn(retries + "th try to download: {} Retrying...", remotePath); });
         }
     }
 }

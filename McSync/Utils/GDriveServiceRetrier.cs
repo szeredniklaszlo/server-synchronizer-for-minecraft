@@ -4,10 +4,10 @@ namespace McSync.Utils
 {
     public class GDriveServiceRetrier
     {
-        public void RetryUntilThrowsNoException(Action retryableAction, Action<Exception> actionOnException)
+        public void RetryUntilThrowsNoException(Action retryableAction, Action<Exception, int> actionOnException)
         {
             bool isSuccessful = false;
-            while (!isSuccessful)
+            for (var numOfTrial = 1; numOfTrial <= 20 && !isSuccessful; numOfTrial++)
                 try
                 {
                     retryableAction();
@@ -16,7 +16,7 @@ namespace McSync.Utils
                 catch (Exception e)
                 {
                     Console.WriteLine(e);
-                    actionOnException(e);
+                    actionOnException(e, numOfTrial);
                 }
         }
     }

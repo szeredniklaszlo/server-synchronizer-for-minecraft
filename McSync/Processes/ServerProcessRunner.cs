@@ -36,13 +36,6 @@ namespace McSync.Processes
             if (!IsJavaPresentInJavaHome(portableJavaHome)) throw new JreNotFoundException();
         }
 
-        private void ExecuteTokenCreation()
-        {
-            const string createTokenCommand = "ngrok authtoken 22NyU96RrxqrNvxb5Y7eJw08ZKl_5ZVerYF6Ei5XJN5b9E2TX";
-            Process tokenCreator = _processRunner.RunCmdCommand(createTokenCommand);
-            tokenCreator.WaitForExit();
-        }
-
         private DirectoryInfo GetPortableJavaHome()
         {
             try
@@ -66,8 +59,6 @@ namespace McSync.Processes
         private List<Process> StartAllProcesses()
         {
             _log.Server(RuntimeStatus.Starting);
-
-            ExecuteTokenCreation();
             List<Process> processes = StartServerProcesses();
 
             _log.Server(RuntimeStatus.Running);
@@ -99,7 +90,7 @@ namespace McSync.Processes
 
         private Process StartTcpTunnelProvider()
         {
-            string openNgrokCommand = "ngrok.exe tcp 25565 --region=eu";
+            var openNgrokCommand = "ngrok.exe";
             return _processRunner.RunCmdCommand(openNgrokCommand);
         }
     }

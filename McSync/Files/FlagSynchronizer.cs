@@ -48,7 +48,7 @@ namespace McSync.Files
             Flags.PersistedStatus = status;
 
             _fileSynchronizer.LocalFileManager.SaveObjectAsJsonFile(Paths.Flags, Flags);
-            _log.Info($"Flag 'PersistedStatus' updated to '{status}'");
+            _log.Info($"Flag 'PersistedStatus' updated to '{status.ToString()}'");
         }
     }
 }
