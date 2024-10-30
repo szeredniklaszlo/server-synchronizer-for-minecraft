@@ -1,0 +1,81 @@
+name: Build and Release .NET Framework 4.8.1 Console App
+
+on:
+  push:
+    tags:
+      - 'v*.*.*' # Triggers on versioned tags like v1.0.0, v2.1.0, etc.
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code with LFS
+        uses: actions/checkout@v3
+        with:
+          lfs: true
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v1
+
+      - name: Setup NuGet
+        uses: nuget/setup-nuget@v2
+        with:
+          nuget-version: latest
+
+      - name: Restore NuGet packages
+        run: nuget restore McSync.sln
+
+      - name: Build Solution
+        run: msbuild /p:Configuration=Release McSync.sln
+
+      - name: Archive Build Artifacts
+        if: success()
+        run: Compress-Archive -Path 'McSync/bin/Release/*' -DestinationPath 'McSync.zip'
+        
+      - name: Upload Build Artifacts
+        if: success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: build
+          path: McSync.zip
+
+      - name: Extract OpenJDK64.zip
+        run: |
+          Expand-Archive -Path 'OpenJDK64.zip' -DestinationPath 'McSync/bin/Release' -Force
+
+      - name: Archive Build Artifacts with Java21
+        if: success()
+        run: Compress-Archive -Path 'McSync/bin/Release/*' -DestinationPath 'McSync-Java21.zip'
+          
+      - name: Upload Build Artifacts with Java21
+        if: success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: build-java
+          path: McSync-Java21.zip
+
+  release:
+    needs: build
+    runs-on: windows-latest
+
+    steps:
+      - name: Download Build Artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: build
+
+      - name: Download Build Artifacts with Java
+        uses: actions/download-artifact@v3
+        with:
+          name: build-java
+
+      - name: Create GitHub Release
+        uses: ncipollo/release-action@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          artifacts: McSync.zip,McSync-Java21.zip
