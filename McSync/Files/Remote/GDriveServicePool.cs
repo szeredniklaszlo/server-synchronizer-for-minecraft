@@ -7,7 +7,9 @@ namespace McSync.Files.Remote
 {
     public class GDriveServicePool
     {
-        private readonly ConcurrentQueue<DriveService> _availableServices = new ConcurrentQueue<DriveService>();
+        private readonly ConcurrentQueue<DriveServiceProxy> _availableServices =
+            new ConcurrentQueue<DriveServiceProxy>();
+
         private readonly GDriveServiceFactory _gDriveServiceFactory;
 
         // TODO: write logs
@@ -30,10 +32,10 @@ namespace McSync.Files.Remote
 
         public T ExecuteWithDriveService<T>(Func<DriveService, T> func)
         {
-            DriveService service = AcquireDriveService();
+            var service = AcquireDriveService();
             try
             {
-                T result = func(service);
+                var result = func(service.DriveService);
                 ReleaseDriveService(service);
                 return result;
             }
@@ -44,20 +46,24 @@ namespace McSync.Files.Remote
             }
         }
 
-        private DriveService AcquireDriveService()
+        private DriveServiceProxy AcquireDriveService()
         {
-            bool isServiceAvailable = _availableServices.TryDequeue(out DriveService service);
-            return isServiceAvailable ? service : CreateNewDriveService();
+            while (_availableServices.TryDequeue(out var serviceProxy))
+                if (serviceProxy.IsAlive)
+                    return serviceProxy;
+
+            return CreateNewDriveServiceProxy();
         }
 
-        private DriveService CreateNewDriveService()
+        private DriveServiceProxy CreateNewDriveServiceProxy()
         {
-            return _gDriveServiceFactory.CreateDriveService();
+            var driveService = _gDriveServiceFactory.CreateDriveService();
+            return new DriveServiceProxy(driveService);
         }
 
-        private void ReleaseDriveService(DriveService service)
+        private void ReleaseDriveService(DriveServiceProxy serviceProxy)
         {
-            _availableServices.Enqueue(service);
+            if (serviceProxy.IsAlive) _availableServices.Enqueue(serviceProxy);
         }
     }
 }

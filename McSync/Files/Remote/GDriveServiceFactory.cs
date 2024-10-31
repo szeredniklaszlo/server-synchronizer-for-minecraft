@@ -30,11 +30,6 @@ namespace McSync.Files.Remote
         public DriveService CreateDriveService()
         {
             UserCredential userCredential = LoginToGAccountAsAppThroughBrowser();
-            // TODO: create a file upload test request, and if an exception is thrown, catch it, 
-            // so the application wont fail to start when the tokens expire in the token.json folder,
-            // delete the token folder, and call CreateUserCredentialAndTokenJsonFile again.
-            // OR easier: delete token folder on every application start,
-            // so it will force the user to login again
             return NewDriveServiceAuthorized(userCredential);
         }
 

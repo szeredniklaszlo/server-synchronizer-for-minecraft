@@ -103,6 +103,7 @@
         <Compile Include="Files\Local\LocalFileManager.cs"/>
         <Compile Include="Files\Remote\GDriveServiceFactory.cs"/>
         <Compile Include="Files\Remote\GDriveServicePool.cs"/>
+        <Compile Include="Files\Remote\DriveServiceProxy.cs"/>
         <Compile Include="Files\Remote\RemoteFileManager.cs"/>
         <Compile Include="Processes\ProcessRunner.cs"/>
         <Compile Include="Processes\ServerProcessRunner.cs"/>
